@@ -1,10 +1,14 @@
 # Notice
 
-This project is a Swift-core reimplementation of **RandomFlip / Random Icon Flip**, originally authored by **Elias Limneos**.
+This project is a Swift-core reimplementation of **RandomFlip / Random Icon Flip**.
+
+Current author and maintainer: **tsangbaby**.
+
+Historical source attribution: **Elias Limneos**, identified by the supplied original archive as the author of the earlier RandomFlip implementation.
 
 The supplied original archive identified the project as open source in its README, but contained no explicit LICENSE file or license terms. This derivative source therefore:
 
-- preserves the original author and project attribution;
+- identifies this derivative source as authored and maintained by tsangbaby;
 - does not claim that the original work uses MIT, GPL, BSD, or any other specific license;
 - does not grant redistribution rights on the original author's behalf;
 - should not be publicly redistributed until the applicable original license terms are confirmed.

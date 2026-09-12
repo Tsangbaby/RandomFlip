@@ -83,7 +83,7 @@ class RandomFlipSwiftSourceContract(unittest.TestCase):
 
     def test_package_and_filter_are_ios15_springboard_only(self) -> None:
         control = (ROOT / "control").read_text(encoding="utf-8")
-        self.assertRegex(control, r"(?m)^Package: net\.limneos\.randomiconsflip$")
+        self.assertRegex(control, r"(?m)^Package: com\.tsangbaby\.randomiconsflip$")
         self.assertRegex(control, r"(?m)^Depends: .*firmware \(>= 15\.0\).*$")
 
         with (ROOT / "RandomIconsFlip.plist").open("rb") as handle:
@@ -95,8 +95,13 @@ class RandomFlipSwiftSourceContract(unittest.TestCase):
         makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
         workflow = (ROOT / ".github" / "workflows" / "build-roothide.yml").read_text(encoding="utf-8")
 
-        self.assertRegex(control, r"(?m)^Version: 0\.0\.1$")
-        self.assertRegex(makefile, r"(?m)^PACKAGE_VERSION = 0\.0\.1$")
+        self.assertRegex(control, r"(?m)^Version: 0\.0\.2$")
+        self.assertRegex(makefile, r"(?m)^PACKAGE_VERSION = 0\.0\.2$")
+        self.assertRegex(control, r"(?m)^Maintainer: Tsangbaby$")
+        self.assertRegex(control, r"(?m)^Author: Tsangbaby$")
+        self.assertRegex(control, r"(?m)^Icon: https://tsangbaby\.github\.io/Icon/RandomIconFlip\.png$")
+        self.assertRegex(control, r"(?m)^Conflicts: net\.limneos\.randomiconsflip$")
+        self.assertRegex(control, r"(?m)^Replaces: net\.limneos\.randomiconsflip$")
         self.assertIn("runs-on: macos-14", workflow)
         self.assertIn("THEOS_PACKAGE_SCHEME: roothide", workflow)
         self.assertIn("SCHEME=roothide", workflow)
@@ -109,7 +114,53 @@ class RandomFlipSwiftSourceContract(unittest.TestCase):
         self.assertIn("SHA256SUMS.txt", workflow)
         self.assertIn("actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683", workflow)
         self.assertIn("actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02", workflow)
+        self.assertIn("com.tsangbaby.randomiconsflip", workflow)
+        self.assertIn("PACKAGE_VERSION: 0.0.2", workflow)
         self.assertNotIn("rootless", workflow.lower())
+
+    def test_active_identity_has_no_legacy_author_or_package(self) -> None:
+        control = (ROOT / "control").read_text(encoding="utf-8")
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        notice = (ROOT / "NOTICE.md").read_text(encoding="utf-8")
+        workflow = (ROOT / ".github" / "workflows" / "build-roothide.yml").read_text(encoding="utf-8")
+
+        self.assertNotIn("Elias Limneos", control + readme)
+        self.assertIn("Current author and maintainer: **tsangbaby**", notice)
+        self.assertIn("Historical source attribution: **Elias Limneos**", notice)
+        self.assertIn("tsangbaby", (readme + notice).lower())
+
+        active_files = [
+            ROOT / "Makefile",
+            ROOT / "Tweak.xm",
+            ROOT / "RuntimeBridge.m",
+            ROOT / "RandomIconsFlip.plist",
+            ROOT / "README.md",
+            ROOT / "NOTICE.md",
+        ]
+        for path in active_files:
+            self.assertNotIn("net.limneos.randomiconsflip", path.read_text(encoding="utf-8"))
+
+        legacy_control_lines = [
+            line for line in control.splitlines() if "net.limneos.randomiconsflip" in line
+        ]
+        self.assertEqual(
+            legacy_control_lines,
+            [
+                "Conflicts: net.limneos.randomiconsflip",
+                "Replaces: net.limneos.randomiconsflip",
+            ],
+        )
+
+        legacy_workflow_lines = [
+            line.strip() for line in workflow.splitlines() if "net.limneos.randomiconsflip" in line
+        ]
+        self.assertEqual(
+            legacy_workflow_lines,
+            [
+                'test "$package_conflicts" = "net.limneos.randomiconsflip"',
+                'test "$package_replaces" = "net.limneos.randomiconsflip"',
+            ],
+        )
 
     def test_public_source_contains_no_embedded_secrets(self) -> None:
         text = "\n".join(

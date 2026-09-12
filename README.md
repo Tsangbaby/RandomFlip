@@ -1,6 +1,6 @@
 # Random Icon Flip — Swift 重构版
 
-这是对 Elias Limneos 原始 `RandomFlip` 的现代化重构。核心行为仍然是：在桌面空闲时，随机选择一个当前可见的主屏幕或 Dock 图标，以随机方向和随机时长执行翻转动画。
+这是由 tsangbaby 维护的 `RandomFlip` Swift 现代化重构版。核心行为仍然是：在桌面空闲时，随机选择一个当前可见的主屏幕或 Dock 图标，以随机方向和随机时长执行翻转动画。
 
 ## 当前交付状态
 
@@ -8,11 +8,13 @@
 - 最低部署版本：iOS 15.0
 - 架构：Swift 核心 + 极小 Logos 启动 Hook
 - 注入范围：仅 `com.apple.springboard`
+- 当前候选版本：RootHide `0.0.2`
+- Debian 包标识符：`com.tsangbaby.randomiconsflip`
 - Rootless / RootHide：项目结构预留，可由现代 Theos scheme 构建
-- 实际编译：尚未执行（当前交付环境没有 Swift、Clang、Theos 和 iPhoneOS SDK）
+- 编译方式：由 GitHub Actions `macos-14` 云端构建
 - 实机验证：尚未执行
 
-因此，本项目当前只能表述为“源码静态合同通过”，不能表述为“已编译”或“已在 iOS 15+ 实机验证”。
+源码合同、云端构建和包级验证是不同证据；不能仅凭源码合同表述为“已生成测试包”，也不能仅凭构建成功表述为“已在 iOS 15+ 实机验证”。
 
 ## 与原版相比
 
@@ -72,16 +74,13 @@ RandomFlip-Swift/
 
 `Tweak.xm` 只 Hook SpringBoard 启动方法并调用 Swift 单例。`RuntimeBridge.m` 只负责类型安全的 Objective-C runtime 消息边界。功能逻辑位于两份 Swift 文件中。
 
-## 后续构建方式
+## 构建方式
 
 需要现代 Theos、支持 iOS 交叉编译的 Swift 工具链及 iPhoneOS SDK。准备好环境后：
 
 ```sh
-# Rootless
-make clean package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless
-
 # RootHide
-make clean package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=roothide
+make clean package FINALPACKAGE=1 PACKAGE_VERSION=0.0.2 THEOS_PACKAGE_SCHEME=roothide
 ```
 
 构建前应先确认所用 Theos 版本确实包含 RootHide scheme，并使用至少 iOS 15 SDK。不要把通过 Python 源码合同等同于 Swift 编译成功。
@@ -94,8 +93,8 @@ make clean package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=roothide
 python3 -m unittest discover -s tests -p 'test_*.py'
 ```
 
-以后取得真实包后，还需分别验证 Rootless/RootHide 包路径、Mach-O 架构、签名和最低固件依赖，并在 iOS 15、16 及计划声明支持的更高版本上测试：桌面、Dock、翻页、搜索、文件夹、抖动编辑、拖拽、锁屏/解锁和减少动态效果。
+真实 RootHide 包已完成包级验证；仍需在 iOS 15、16 及计划声明支持的更高版本上测试：桌面、Dock、翻页、搜索、文件夹、抖动编辑、拖拽、锁屏/解锁和减少动态效果。
 
 ## 署名与许可边界
 
-原始压缩包的 README 写明项目为 open source，但压缩包中没有明确的 `LICENSE` 文件。此重构保留原作者署名，但不替原作者推定或新增许可证。公开分发前请确认原项目许可条件，详见 `NOTICE.md`。
+本重构由 tsangbaby 维护和署名。原始压缩包的 README 写明项目为 open source，但压缩包中没有明确的 `LICENSE` 文件；本项目不替任何来源方推定或新增许可证。公开分发前请确认原项目许可条件，详见 `NOTICE.md`。
