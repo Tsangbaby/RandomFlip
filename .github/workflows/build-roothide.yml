@@ -1,0 +1,183 @@
+name: Build RootHide package
+
+on:
+  workflow_dispatch:
+    inputs:
+      scheme:
+        description: "Package scheme"
+        required: true
+        default: roothide
+        type: choice
+        options:
+          - roothide
+
+permissions:
+  contents: read
+
+env:
+  THEOS_PACKAGE_SCHEME: roothide
+  ROOTHIDE_THEOS_SHA: 88506b2c22e9e07dd4ed055f23c9e398a117a2c7
+  SDK_REPOSITORY_SHA: 146e41ff2c292168388929e43c9b4de2f00e36b3
+  SDK_RELEASE_TAG: master-146e41f
+  SDK_RELEASE_COMMIT_SHA: 146e41ff2c292168388929e43c9b4de2f00e36b3
+  SDK_NAME: iPhoneOS16.5.sdk
+  SDK_ARCHIVE_SHA256: 5e0fd3f01266cce4ce012d4a99b38eb56578fca40d09edc81cd83dee958202fb
+  PACKAGE_VERSION: 0.0.1
+
+jobs:
+  build-roothide:
+    name: Build roothide
+    runs-on: macos-14
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify source and requested scheme
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${{ inputs.scheme }}" = "roothide"
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          test -z "$(git status --porcelain)"
+          grep -Eq '^Version: 0\.0\.1$' control
+          grep -Eq '^PACKAGE_VERSION = 0\.0\.1$' Makefile
+
+      - name: Inspect Apple toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcode-select -p
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+
+      - name: Install build utilities
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew list --versions ldid >/dev/null 2>&1 || brew install ldid
+          brew list --versions make >/dev/null 2>&1 || brew install make
+          brew list --versions dpkg >/dev/null 2>&1 || brew install dpkg
+          command -v ldid
+          command -v gmake
+          command -v dpkg-deb
+
+      - name: Fetch pinned RootHide Theos and SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          theos_dir="$RUNNER_TEMP/roothide-theos"
+          rm -rf "$theos_dir"
+          git clone --recursive --no-tags https://github.com/roothide/theos.git "$theos_dir"
+          git -C "$theos_dir" fetch --no-tags origin "$ROOTHIDE_THEOS_SHA"
+          git -C "$theos_dir" checkout --detach "$ROOTHIDE_THEOS_SHA"
+          git -C "$theos_dir" submodule update --init --recursive
+          test "$(git -C "$theos_dir" rev-parse HEAD)" = "$ROOTHIDE_THEOS_SHA"
+          test -f "$theos_dir/makefiles/common.mk"
+
+          sdk_tag_head="$(git ls-remote https://github.com/theos/sdks.git "refs/tags/$SDK_RELEASE_TAG" | awk 'NR == 1 { print $1 }')"
+          test "$sdk_tag_head" = "$SDK_REPOSITORY_SHA"
+          test "$SDK_REPOSITORY_SHA" = "$SDK_RELEASE_COMMIT_SHA"
+
+          mkdir -p "$theos_dir/sdks"
+          sdk_archive="$RUNNER_TEMP/$SDK_NAME.tar.xz"
+          curl --fail --location --retry 3 --silent --show-error \
+            --output "$sdk_archive" \
+            "https://github.com/theos/sdks/releases/download/$SDK_RELEASE_TAG/$SDK_NAME.tar.xz"
+          printf '%s  %s\n' "$SDK_ARCHIVE_SHA256" "$sdk_archive" | shasum -a 256 --check -
+          tar -xJf "$sdk_archive" -C "$theos_dir/sdks"
+          test -d "$theos_dir/sdks/$SDK_NAME"
+          test -f "$theos_dir/sdks/$SDK_NAME/SDKSettings.plist"
+
+          echo "THEOS=$theos_dir" >> "$GITHUB_ENV"
+          echo "$theos_dir/bin" >> "$GITHUB_PATH"
+
+      - name: Build roothide package
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE"
+          export SCHEME=roothide
+          test "$THEOS_PACKAGE_SCHEME" = "$SCHEME"
+          gmake clean package \
+            FINALPACKAGE=1 \
+            PACKAGE_VERSION="$PACKAGE_VERSION" \
+            THEOS_PACKAGE_SCHEME="$SCHEME" \
+            TARGET=iphone:clang:16.5:15.0 \
+            ARCHS=arm64e \
+            -j"$(sysctl -n hw.ncpu)"
+
+      - name: Verify and stage package
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE"
+          artifact_dir="$RUNNER_TEMP/randomflip-artifact"
+          extract_dir="$RUNNER_TEMP/randomflip-extracted"
+          rm -rf "$artifact_dir" "$extract_dir"
+          mkdir -p "$artifact_dir" "$extract_dir"
+
+          deb_count="$(find packages -maxdepth 1 -type f -name '*.deb' | wc -l | tr -d '[:space:]')"
+          test "$deb_count" = 1
+          deb="$(find packages -maxdepth 1 -type f -name '*.deb' -print -quit)"
+          test -n "$deb"
+
+          package_name="$(dpkg-deb -f "$deb" Package)"
+          package_version="$(dpkg-deb -f "$deb" Version)"
+          package_arch="$(dpkg-deb -f "$deb" Architecture)"
+          test "$package_name" = "net.limneos.randomiconsflip"
+          test "$package_version" = "$PACKAGE_VERSION"
+          test "$package_arch" = "iphoneos-arm64e"
+
+          dpkg-deb -I "$deb" > "$artifact_dir/PACKAGE_METADATA_FULL.txt"
+          dpkg-deb -c "$deb" > "$artifact_dir/PACKAGE_CONTENTS_FULL.txt"
+          dpkg-deb -x "$deb" "$extract_dir"
+          test -f "$extract_dir/Library/MobileSubstrate/DynamicLibraries/RandomIconsFlip.dylib"
+          test -f "$extract_dir/Library/MobileSubstrate/DynamicLibraries/RandomIconsFlip.plist"
+          test ! -e "$extract_dir/var/jb"
+
+          found_macho=0
+          find "$extract_dir" -type f -print0 > "$RUNNER_TEMP/randomflip-files.list"
+          while IFS= read -r -d '' candidate; do
+            file_kind="$(file -b "$candidate")"
+            case "$file_kind" in
+              *Mach-O*)
+                found_macho=1
+                archs="$(lipo -archs "$candidate")"
+                test "$archs" = "arm64e"
+                ldid -e "$candidate" > /dev/null
+                ;;
+            esac
+          done < "$RUNNER_TEMP/randomflip-files.list"
+          test "$found_macho" -gt 0
+
+          cp "$deb" "$artifact_dir/"
+          deb_basename="$(basename "$deb")"
+          deb_sha256="$(shasum -a 256 "$deb" | awk '{ print $1 }')"
+          printf '%s\n' "$GITHUB_SHA" > "$artifact_dir/SOURCE_COMMIT.txt"
+          printf '%s  %s\n' "$deb_sha256" "$deb_basename" > "$artifact_dir/SHA256SUMS.txt"
+          {
+            printf 'Package: %s\n' "$package_name"
+            printf 'Version: %s\n' "$package_version"
+            printf 'Architecture: %s\n' "$package_arch"
+            printf 'Theos: %s\n' "$ROOTHIDE_THEOS_SHA"
+            printf 'SDK repository: %s\n' "$SDK_REPOSITORY_SHA"
+            printf 'SDK release: %s\n' "$SDK_RELEASE_TAG"
+            printf 'SDK: %s\n' "$SDK_NAME"
+          } > "$artifact_dir/BUILD_INFO.txt"
+
+          test "$(cat "$artifact_dir/SOURCE_COMMIT.txt")" = "$GITHUB_SHA"
+          test "$(awk '{ print $1 }' "$artifact_dir/SHA256SUMS.txt")" = "$deb_sha256"
+          ls -l "$artifact_dir"
+
+      - name: Upload RootHide artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: randomflip-roothide-${{ github.sha }}
+          path: ${{ runner.temp }}/randomflip-artifact
+          if-no-files-found: error
+          retention-days: 7

@@ -90,11 +90,34 @@ class RandomFlipSwiftSourceContract(unittest.TestCase):
             filter_plist = plistlib.load(handle)
         self.assertEqual(filter_plist, {"Filter": {"Bundles": ["com.apple.springboard"]}})
 
+    def test_roothide_build_contract(self) -> None:
+        control = (ROOT / "control").read_text(encoding="utf-8")
+        makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+        workflow = (ROOT / ".github" / "workflows" / "build-roothide.yml").read_text(encoding="utf-8")
+
+        self.assertRegex(control, r"(?m)^Version: 0\.0\.1$")
+        self.assertRegex(makefile, r"(?m)^PACKAGE_VERSION = 0\.0\.1$")
+        self.assertIn("runs-on: macos-14", workflow)
+        self.assertIn("THEOS_PACKAGE_SCHEME: roothide", workflow)
+        self.assertIn("SCHEME=roothide", workflow)
+        self.assertIn("88506b2c22e9e07dd4ed055f23c9e398a117a2c7", workflow)
+        self.assertIn("146e41ff2c292168388929e43c9b4de2f00e36b3", workflow)
+        self.assertIn("iPhoneOS16.5.sdk", workflow)
+        self.assertIn("TARGET=iphone:clang:16.5:15.0", workflow)
+        self.assertIn("iphoneos-arm64e", workflow)
+        self.assertIn("SOURCE_COMMIT.txt", workflow)
+        self.assertIn("SHA256SUMS.txt", workflow)
+        self.assertIn("actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683", workflow)
+        self.assertIn("actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02", workflow)
+        self.assertNotIn("rootless", workflow.lower())
+
     def test_public_source_contains_no_embedded_secrets(self) -> None:
         text = "\n".join(
             path.read_text(encoding="utf-8")
             for path in ROOT.rglob("*")
-            if path.is_file() and path.suffix.lower() in {".swift", ".xm", ".h", ".md", ".plist", ""}
+            if path.is_file()
+            and ".git" not in path.parts
+            and path.suffix.lower() in {".swift", ".xm", ".h", ".md", ".plist", ".yml", ".yaml", ""}
         )
         self.assertIsNone(re.search(r"sk-[A-Za-z0-9_-]{20,}", text))
         self.assertNotIn("BEGIN PRIVATE KEY", text)
