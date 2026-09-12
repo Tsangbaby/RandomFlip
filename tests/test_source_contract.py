@@ -1,0 +1,104 @@
+from __future__ import annotations
+
+import plistlib
+import re
+import unittest
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+class RandomFlipSwiftSourceContract(unittest.TestCase):
+    def test_swift_core_with_one_minimal_logos_entry(self) -> None:
+        makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+        hook = (ROOT / "Tweak.xm").read_text(encoding="utf-8")
+        manager = (ROOT / "Sources" / "RandomFlipManager.swift").read_text(encoding="utf-8")
+        environment = (ROOT / "Sources" / "SpringBoardEnvironment.swift").read_text(encoding="utf-8")
+
+        self.assertIn("TARGET = iphone:clang:latest:15.0", makefile)
+        self.assertIn("Sources/RandomFlipManager.swift", makefile)
+        self.assertIn("Sources/SpringBoardEnvironment.swift", makefile)
+        self.assertEqual(hook.count("%hook"), 1)
+        self.assertIn("%hook SpringBoard", hook)
+        self.assertIn("applicationDidFinishLaunching:", hook)
+        self.assertIn("<RandomIconsFlip-Swift.h>", hook)
+
+        self.assertIn("final class RandomFlipManager", manager)
+        self.assertIn("DispatchWorkItem", manager)
+        self.assertIn("UIView.transition", manager)
+        self.assertIn("Int.random(in: 50...409)", manager)
+        self.assertIn("Int.random(in: 5...14)", manager)
+        self.assertIn("UIAccessibility.isReduceMotionEnabled", manager)
+
+        self.assertIn('"isShowingHomescreen"', environment)
+        self.assertIn('"areHomeScreenIconsOccluded"', environment)
+        self.assertIn('"hasOpenFolder"', environment)
+        self.assertIn('"isScrolling"', environment)
+        self.assertIn('"isEditing"', environment)
+        self.assertIn('NSClassFromString("SBIconView")', environment)
+        self.assertIn('NSClassFromString("SBIconListView")', environment)
+        self.assertIn('"SBIconLocationRoot"', environment)
+        self.assertIn('"SBIconLocationDock"', environment)
+        self.assertIn('"isTransitioningIconLocation"', environment)
+        self.assertIn('"_iconImageView"', environment)
+
+        combined = hook + manager + environment
+        for legacy in ("rand()", "srand(", "beginAnimations", "commitAnimations", "performSelector"):
+            self.assertNotIn(legacy, combined)
+
+    def test_runtime_safety_gates_fail_closed(self) -> None:
+        header = (ROOT / "RandomIconsFlip-Bridging-Header.h").read_text(encoding="utf-8")
+        bridge = (ROOT / "RuntimeBridge.m").read_text(encoding="utf-8")
+        manager = (ROOT / "Sources" / "RandomFlipManager.swift").read_text(encoding="utf-8")
+        environment = (ROOT / "Sources" / "SpringBoardEnvironment.swift").read_text(encoding="utf-8")
+
+        self.assertIn("#pragma once", header)
+        self.assertIn("RFReadBoolSelector", header)
+        self.assertIn("methodSignatureForSelector", bridge)
+        self.assertIn("RFReadBoolSelector", environment)
+        for selector in (
+            "isShowingPullDownSearchOrTransitioningToVisible",
+            "isIconDragging",
+            "hasAnimatingFolder",
+            "isTransitioning",
+            "isTransitioningHomeScreenState",
+            "isShowingIconContextMenu",
+        ):
+            self.assertIn(f'"{selector}"', environment)
+
+        self.assertIn(
+            'let iconManager = RFInvokeObjectSelector(iconController, "iconManager")',
+            environment,
+        )
+        self.assertIn("requiredFalse", environment)
+        self.assertNotIn("RFInvokeBoolSelector", environment)
+        self.assertNotIn("return isEffectivelyVisible(iconView) ? iconView : nil", environment)
+        self.assertNotIn("animationWatchdogMargin", manager)
+        self.assertNotIn("removeAllAnimations", manager)
+        self.assertIn("requiredConsecutiveReadyTicks = 2", manager)
+        self.assertIn("consecutiveReadyTicks", manager)
+        self.assertIn("consecutiveReadyTicks = 0", manager)
+        self.assertGreaterEqual((manager + environment).count("@MainActor"), 2)
+
+    def test_package_and_filter_are_ios15_springboard_only(self) -> None:
+        control = (ROOT / "control").read_text(encoding="utf-8")
+        self.assertRegex(control, r"(?m)^Package: net\.limneos\.randomiconsflip$")
+        self.assertRegex(control, r"(?m)^Depends: .*firmware \(>= 15\.0\).*$")
+
+        with (ROOT / "RandomIconsFlip.plist").open("rb") as handle:
+            filter_plist = plistlib.load(handle)
+        self.assertEqual(filter_plist, {"Filter": {"Bundles": ["com.apple.springboard"]}})
+
+    def test_public_source_contains_no_embedded_secrets(self) -> None:
+        text = "\n".join(
+            path.read_text(encoding="utf-8")
+            for path in ROOT.rglob("*")
+            if path.is_file() and path.suffix.lower() in {".swift", ".xm", ".h", ".md", ".plist", ""}
+        )
+        self.assertIsNone(re.search(r"sk-[A-Za-z0-9_-]{20,}", text))
+        self.assertNotIn("BEGIN PRIVATE KEY", text)
+
+
+if __name__ == "__main__":
+    unittest.main()
