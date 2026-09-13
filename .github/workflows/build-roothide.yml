@@ -22,7 +22,7 @@ env:
   SDK_RELEASE_COMMIT_SHA: 146e41ff2c292168388929e43c9b4de2f00e36b3
   SDK_NAME: iPhoneOS16.5.sdk
   SDK_ARCHIVE_SHA256: 5e0fd3f01266cce4ce012d4a99b38eb56578fca40d09edc81cd83dee958202fb
-  PACKAGE_VERSION: 0.0.4
+  PACKAGE_VERSION: 0.0.5
 
 jobs:
   build-roothide:
@@ -44,8 +44,8 @@ jobs:
           test "${{ inputs.scheme }}" = "roothide"
           test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
           test -z "$(git status --porcelain)"
-          grep -Eq '^Version: 0\.0\.4$' control
-          grep -Eq '^PACKAGE_VERSION = 0\.0\.4$' Makefile
+          grep -Eq '^Version: 0\.0\.5$' control
+          grep -Eq '^PACKAGE_VERSION = 0\.0\.5$' Makefile
 
       - name: Inspect Apple toolchain
         shell: bash

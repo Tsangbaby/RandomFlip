@@ -1,6 +1,6 @@
 # Random Icon Flip — Swift 重构版
 
-这是由 tsangbaby 维护的 `RandomFlip` Swift 现代化重构版。核心行为是：在桌面空闲时，随机选择一个当前可见的主屏幕或 Dock 图标，执行翻转、弹跳、摇摆或轻旋转动画。
+这是由 tsangbaby 维护的 `RandomFlip` Swift 现代化重构版。核心行为是：在桌面空闲时，随机选择一个当前可见的主屏幕或 Dock 图标，执行翻转、弹跳、角度摇摆、轻旋转、水平震动、跳起落地或果冻挤压动画。
 
 ## 当前交付状态
 
@@ -8,11 +8,11 @@
 - 最低部署版本：iOS 15.0
 - 架构：Swift 核心 + 极小 Logos 启动 Hook
 - 注入范围：仅 `com.apple.springboard`
-- 当前候选版本：RootHide `0.0.4`
+- 当前候选版本：RootHide `0.0.5`
 - Debian 包标识符：`com.tsangbaby.randomiconsflip`
 - Rootless / RootHide：项目结构预留，可由现代 Theos scheme 构建
 - 编译方式：由 GitHub Actions `macos-14` 云端构建
-- 实机验证：尚未执行
+- 实机验证：`0.0.4` 动画池已通过；`0.0.5` 新增动画尚待验证
 
 源码合同、云端构建和包级验证是不同证据；不能仅凭源码合同表述为“已生成测试包”，也不能仅凭构建成功表述为“已在 iOS 15+ 实机验证”。
 
@@ -80,7 +80,7 @@ RandomFlip-Swift/
 
 ```sh
 # RootHide
-make clean package FINALPACKAGE=1 PACKAGE_VERSION=0.0.4 THEOS_PACKAGE_SCHEME=roothide
+make clean package FINALPACKAGE=1 PACKAGE_VERSION=0.0.5 THEOS_PACKAGE_SCHEME=roothide
 ```
 
 构建前应先确认所用 Theos 版本确实包含 RootHide scheme，并使用至少 iOS 15 SDK。不要把通过 Python 源码合同等同于 Swift 编译成功。
