@@ -114,6 +114,33 @@ class RandomFlipSwiftSourceContract(unittest.TestCase):
         self.assertNotIn("view.center =", manager)
         self.assertNotIn("removeAllAnimations", manager)
 
+    def test_animation_amplitudes_are_more_visible_but_bounded(self) -> None:
+        manager = (ROOT / "Sources" / "RandomFlipManager.swift").read_text(encoding="utf-8")
+
+        for expected in (
+            "baseTransform.scaledBy(x: 0.74, y: 0.74)",
+            "baseTransform.scaledBy(x: 1.20, y: 1.20)",
+            "baseTransform.scaledBy(x: 0.94, y: 0.94)",
+            "let angle = CGFloat.pi / 12.0",
+            "let angle = direction * CGFloat.pi / 6.0",
+            ".scaledBy(x: 1.08, y: 1.08)",
+        ):
+            self.assertIn(expected, manager)
+
+        for superseded in (
+            "baseTransform.scaledBy(x: 0.86, y: 0.86)",
+            "baseTransform.scaledBy(x: 1.10, y: 1.10)",
+            "baseTransform.scaledBy(x: 0.97, y: 0.97)",
+            "let angle = CGFloat.pi / 24.0",
+            "let angle = direction * CGFloat.pi / 10.0",
+            ".scaledBy(x: 1.04, y: 1.04)",
+        ):
+            self.assertNotIn(superseded, manager)
+
+        self.assertIn("view.transform = baseTransform", manager)
+        self.assertNotIn("view.frame =", manager)
+        self.assertNotIn("view.center =", manager)
+
     def test_displayed_icon_discovery_includes_generic_floating_docks(self) -> None:
         header = (ROOT / "RandomIconsFlip-Bridging-Header.h").read_text(encoding="utf-8")
         bridge = (ROOT / "RuntimeBridge.m").read_text(encoding="utf-8")

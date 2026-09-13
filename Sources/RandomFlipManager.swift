@@ -208,13 +208,13 @@ public final class RandomFlipManager: NSObject {
             options: options
         ) {
             UIView.addKeyframe(withRelativeStartTime: 0.00, relativeDuration: 0.24) {
-                view.transform = baseTransform.scaledBy(x: 0.86, y: 0.86)
+                view.transform = baseTransform.scaledBy(x: 0.74, y: 0.74)
             }
             UIView.addKeyframe(withRelativeStartTime: 0.24, relativeDuration: 0.32) {
-                view.transform = baseTransform.scaledBy(x: 1.10, y: 1.10)
+                view.transform = baseTransform.scaledBy(x: 1.20, y: 1.20)
             }
             UIView.addKeyframe(withRelativeStartTime: 0.56, relativeDuration: 0.20) {
-                view.transform = baseTransform.scaledBy(x: 0.97, y: 0.97)
+                view.transform = baseTransform.scaledBy(x: 0.94, y: 0.94)
             }
             UIView.addKeyframe(withRelativeStartTime: 0.76, relativeDuration: 0.24) {
                 view.transform = baseTransform
@@ -230,7 +230,7 @@ public final class RandomFlipManager: NSObject {
         completion: @escaping (Bool) -> Void
     ) {
         let baseTransform = view.transform
-        let angle = CGFloat.pi / 24.0
+        let angle = CGFloat.pi / 12.0
         let options: UIView.KeyframeAnimationOptions = [
             .calculationModeCubic,
             .beginFromCurrentState,
@@ -266,7 +266,7 @@ public final class RandomFlipManager: NSObject {
     ) {
         let baseTransform = view.transform
         let direction: CGFloat = Bool.random() ? 1.0 : -1.0
-        let angle = direction * CGFloat.pi / 10.0
+        let angle = direction * CGFloat.pi / 6.0
         let options: UIView.KeyframeAnimationOptions = [
             .calculationModeCubic,
             .beginFromCurrentState,
@@ -281,7 +281,7 @@ public final class RandomFlipManager: NSObject {
             UIView.addKeyframe(withRelativeStartTime: 0.00, relativeDuration: 0.45) {
                 view.transform = baseTransform
                     .rotated(by: angle)
-                    .scaledBy(x: 1.04, y: 1.04)
+                    .scaledBy(x: 1.08, y: 1.08)
             }
             UIView.addKeyframe(withRelativeStartTime: 0.45, relativeDuration: 0.55) {
                 view.transform = baseTransform
