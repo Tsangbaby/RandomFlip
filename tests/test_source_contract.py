@@ -81,6 +81,39 @@ class RandomFlipSwiftSourceContract(unittest.TestCase):
         self.assertIn("consecutiveReadyTicks = 0", manager)
         self.assertGreaterEqual((manager + environment).count("@MainActor"), 2)
 
+    def test_random_animation_pool_adds_three_transform_safe_styles(self) -> None:
+        manager = (ROOT / "Sources" / "RandomFlipManager.swift").read_text(encoding="utf-8")
+
+        for style in ("flip", "bounce", "wiggle", "rotation"):
+            self.assertIn(f"case {style}", manager)
+
+        pool = re.search(
+            r"private static let animationPool: \[IconAnimationStyle\] = \[(.*?)\]",
+            manager,
+            re.DOTALL,
+        )
+        self.assertIsNotNone(pool)
+        styles = re.findall(r"\.(flip|bounce|wiggle|rotation)", pool.group(1))
+        self.assertCountEqual(
+            styles,
+            ["flip", "bounce", "bounce", "wiggle", "wiggle", "rotation", "rotation"],
+        )
+        self.assertEqual(styles.count("flip"), 1)
+        self.assertIn("Self.animationPool.randomElement() ?? .flip", manager)
+
+        for helper in ("animateFlip", "animateBounce", "animateWiggle", "animateRotation"):
+            self.assertIn(f"private func {helper}", manager)
+        self.assertIn("UIView.animateKeyframes", manager)
+        self.assertGreaterEqual(manager.count("let baseTransform = view.transform"), 3)
+        self.assertIn("baseTransform.scaledBy", manager)
+        self.assertIn("baseTransform.rotated(by:", manager)
+        self.assertGreaterEqual(manager.count("view.transform = baseTransform"), 3)
+        self.assertIn(".beginFromCurrentState", manager)
+        self.assertIn(".allowUserInteraction", manager)
+        self.assertNotIn("view.frame =", manager)
+        self.assertNotIn("view.center =", manager)
+        self.assertNotIn("removeAllAnimations", manager)
+
     def test_displayed_icon_discovery_includes_generic_floating_docks(self) -> None:
         header = (ROOT / "RandomIconsFlip-Bridging-Header.h").read_text(encoding="utf-8")
         bridge = (ROOT / "RuntimeBridge.m").read_text(encoding="utf-8")
@@ -134,8 +167,8 @@ class RandomFlipSwiftSourceContract(unittest.TestCase):
         makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
         workflow = (ROOT / ".github" / "workflows" / "build-roothide.yml").read_text(encoding="utf-8")
 
-        self.assertRegex(control, r"(?m)^Version: 0\.0\.3$")
-        self.assertRegex(makefile, r"(?m)^PACKAGE_VERSION = 0\.0\.3$")
+        self.assertRegex(control, r"(?m)^Version: 0\.0\.4$")
+        self.assertRegex(makefile, r"(?m)^PACKAGE_VERSION = 0\.0\.4$")
         self.assertRegex(control, r"(?m)^Maintainer: Tsangbaby$")
         self.assertRegex(control, r"(?m)^Author: Tsangbaby$")
         self.assertRegex(control, r"(?m)^Icon: https://tsangbaby\.github\.io/Icon/RandomIconFlip\.png$")
@@ -158,7 +191,7 @@ class RandomFlipSwiftSourceContract(unittest.TestCase):
         self.assertIn("actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683", workflow)
         self.assertIn("actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02", workflow)
         self.assertIn("com.tsangbaby.randomiconsflip", workflow)
-        self.assertIn("PACKAGE_VERSION: 0.0.3", workflow)
+        self.assertIn("PACKAGE_VERSION: 0.0.4", workflow)
         self.assertNotIn("rootless", workflow.lower())
 
     def test_active_identity_has_no_legacy_author_or_package(self) -> None:
