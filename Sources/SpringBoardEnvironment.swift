@@ -66,17 +66,13 @@ final class SpringBoardEnvironment {
             return []
         }
 
-        var stack = foregroundWindows().flatMap { $0.subviews }
+        var candidates = systemDisplayedIconViews()
+        candidates.append(contentsOf: windowScannedIconViews(matching: iconViewClass))
+
         var results: [UIView] = []
         var seen = Set<ObjectIdentifier>()
 
-        while let view = stack.popLast() {
-            guard !view.isHidden, view.alpha > 0.01 else {
-                continue
-            }
-
-            stack.append(contentsOf: view.subviews)
-
+        for view in candidates {
             guard view.isKind(of: iconViewClass),
                   isEffectivelyVisible(view),
                   belongsToRootOrDock(view),
@@ -93,10 +89,40 @@ final class SpringBoardEnvironment {
         return results
     }
 
+    private func systemDisplayedIconViews() -> [UIView] {
+        guard let iconController = RFSharedInstanceForClassNamed("SBIconController"),
+              let iconManager = RFInvokeObjectSelector(iconController, "iconManager") else {
+            return []
+        }
+
+        return RFDisplayedIconViews(iconManager).compactMap { $0 as? UIView }
+    }
+
+    private func windowScannedIconViews(matching iconViewClass: AnyClass) -> [UIView] {
+        var stack = foregroundWindows().flatMap { $0.subviews }
+        var results: [UIView] = []
+
+        while let view = stack.popLast() {
+            guard !view.isHidden, view.alpha > 0.01 else {
+                continue
+            }
+
+            stack.append(contentsOf: view.subviews)
+            if view.isKind(of: iconViewClass) {
+                results.append(view)
+            }
+        }
+
+        return results
+    }
+
     private func belongsToRootOrDock(_ iconView: UIView) -> Bool {
         guard let iconListViewClass = NSClassFromString("SBIconListView"),
-              let iconListView = firstAncestor(of: iconView, matching: iconListViewClass),
-              readBool(iconListView, selector: "isTransitioningIconLocation") == false else {
+              let iconListView = firstAncestor(of: iconView, matching: iconListViewClass) else {
+            return hasExplicitDockSemantics(iconView)
+        }
+
+        guard readBool(iconListView, selector: "isTransitioningIconLocation") == false else {
             return false
         }
 
@@ -108,8 +134,33 @@ final class SpringBoardEnvironment {
             return false
         }
 
-        return location == "SBIconLocationRoot" || location == "SBIconLocationDock"
+        return allowedIconLocations.contains(location)
     }
+
+    private func hasExplicitDockSemantics(_ iconView: UIView) -> Bool {
+        if readBool(iconView, selector: "isInDock") == true {
+            return true
+        }
+
+        guard let location = RFInvokeObjectSelector(iconView, "location") as? String else {
+            return false
+        }
+
+        return dockIconLocations.contains(location)
+    }
+
+    private let allowedIconLocations: Set<String> = [
+        "SBIconLocationRoot",
+        "SBIconLocationDock",
+        "SBIconLocationFloatingDock",
+        "SBIconLocationFloatingDockSuggestions"
+    ]
+
+    private let dockIconLocations: Set<String> = [
+        "SBIconLocationDock",
+        "SBIconLocationFloatingDock",
+        "SBIconLocationFloatingDockSuggestions"
+    ]
 
     private func firstAncestor(of view: UIView, matching targetClass: AnyClass) -> UIView? {
         var ancestor = view.superview

@@ -82,3 +82,42 @@ id RFSharedInstanceForClassNamed(NSString *className) {
 
 	return nil;
 }
+
+NSArray *RFDisplayedIconViews(id iconManager) {
+	if (iconManager == nil) {
+		return @[];
+	}
+
+	SEL selector = NSSelectorFromString(@"enumerateDisplayedIconViewsUsingBlock:");
+	if (![iconManager respondsToSelector:selector]) {
+		return @[];
+	}
+
+	NSMethodSignature *signature = [iconManager methodSignatureForSelector:selector];
+	if (signature == nil || signature.numberOfArguments != 3) {
+		return @[];
+	}
+
+	const char *returnType = RFSkipTypeQualifiers(signature.methodReturnType);
+	const char *argumentType = RFSkipTypeQualifiers([signature getArgumentTypeAtIndex:2]);
+	if (returnType[0] != 'v' || argumentType[0] != '@') {
+		return @[];
+	}
+
+	NSMutableArray *views = [NSMutableArray array];
+	void (^collector)(id, BOOL *) = ^(id iconView, BOOL *stop) {
+		(void)stop;
+		if (iconView != nil) {
+			[views addObject:iconView];
+		}
+	};
+
+	void (*sendBlock)(id, SEL, id) = (void (*)(id, SEL, id))objc_msgSend;
+	@try {
+		sendBlock(iconManager, selector, collector);
+	} @catch (__unused NSException *exception) {
+		return @[];
+	}
+
+	return [views copy];
+}

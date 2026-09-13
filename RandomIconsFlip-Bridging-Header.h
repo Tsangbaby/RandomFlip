@@ -22,6 +22,10 @@ FOUNDATION_EXPORT id _Nullable RFSharedInstanceForClassNamed(
 	NSString *className
 );
 
+FOUNDATION_EXPORT NSArray *RFDisplayedIconViews(
+	id _Nullable iconManager
+);
+
 #ifdef __cplusplus
 }
 #endif

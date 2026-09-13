@@ -81,6 +81,45 @@ class RandomFlipSwiftSourceContract(unittest.TestCase):
         self.assertIn("consecutiveReadyTicks = 0", manager)
         self.assertGreaterEqual((manager + environment).count("@MainActor"), 2)
 
+    def test_displayed_icon_discovery_includes_generic_floating_docks(self) -> None:
+        header = (ROOT / "RandomIconsFlip-Bridging-Header.h").read_text(encoding="utf-8")
+        bridge = (ROOT / "RuntimeBridge.m").read_text(encoding="utf-8")
+        environment = (ROOT / "Sources" / "SpringBoardEnvironment.swift").read_text(encoding="utf-8")
+
+        self.assertIn("RFDisplayedIconViews", header)
+        self.assertIn("RFDisplayedIconViews", bridge)
+        self.assertIn('NSSelectorFromString(@"enumerateDisplayedIconViewsUsingBlock:")', bridge)
+        self.assertIn("signature.numberOfArguments != 3", bridge)
+        self.assertIn("methodReturnType", bridge)
+        self.assertIn("getArgumentTypeAtIndex:2", bridge)
+
+        self.assertIn("RFDisplayedIconViews(iconManager)", environment)
+        self.assertIn("var candidates = systemDisplayedIconViews()", environment)
+        self.assertIn(
+            "candidates.append(contentsOf: windowScannedIconViews(matching: iconViewClass))",
+            environment,
+        )
+        self.assertIn("foregroundWindows()", environment)
+        self.assertIn('"SBIconLocationFloatingDock"', environment)
+        self.assertIn('"SBIconLocationFloatingDockSuggestions"', environment)
+        self.assertIn("let identifier = ObjectIdentifier(view)", environment)
+        self.assertIn("if seen.insert(identifier).inserted", environment)
+        self.assertIn("isEffectivelyVisible", environment)
+        self.assertIn("isIconBusy", environment)
+
+        production = header + bridge + environment
+        self.assertNotIn("FloatingDockXVI", production)
+        self.assertNotIn('NSClassFromString("UIImageView")', production)
+
+    def test_custom_dock_scan_requires_explicit_icon_dock_semantics(self) -> None:
+        environment = (ROOT / "Sources" / "SpringBoardEnvironment.swift").read_text(encoding="utf-8")
+
+        self.assertIn("return hasExplicitDockSemantics(iconView)", environment)
+        self.assertIn('readBool(iconView, selector: "isInDock") == true', environment)
+        self.assertIn('RFInvokeObjectSelector(iconView, "location") as? String', environment)
+        self.assertIn("dockIconLocations.contains(location)", environment)
+        self.assertNotIn("return iconView.isKind(of: iconViewClass)", environment)
+
     def test_package_and_filter_are_ios15_springboard_only(self) -> None:
         control = (ROOT / "control").read_text(encoding="utf-8")
         self.assertRegex(control, r"(?m)^Package: com\.tsangbaby\.randomiconsflip$")
