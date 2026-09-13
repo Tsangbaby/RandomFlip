@@ -4,10 +4,23 @@ import UIKit
 @MainActor
 @objc(RandomFlipManager)
 public final class RandomFlipManager: NSObject {
+    private enum IconAnimationStyle {
+        case flip
+        case bounce
+        case wiggle
+        case rotation
+    }
+
     private static let singleton = RandomFlipManager(environment: SpringBoardEnvironment())
 
     private static let initialDelay: TimeInterval = 1.5
     private static let requiredConsecutiveReadyTicks = 2
+    private static let animationPool: [IconAnimationStyle] = [
+        .flip,
+        .bounce, .bounce,
+        .wiggle, .wiggle,
+        .rotation, .rotation
+    ]
 
     private let environment: SpringBoardEnvironment
     private var pendingTick: DispatchWorkItem?
@@ -136,6 +149,28 @@ public final class RandomFlipManager: NSObject {
 
         let token = animationSequence
         let duration = Self.nextAnimationDuration()
+        let style = Self.animationPool.randomElement() ?? .flip
+        let completion: (Bool) -> Void = { [weak self, weak view] _ in
+            self?.finishAnimation(token: token, expectedView: view)
+        }
+
+        switch style {
+        case .flip:
+            animateFlip(on: view, duration: duration, completion: completion)
+        case .bounce:
+            animateBounce(on: view, duration: duration, completion: completion)
+        case .wiggle:
+            animateWiggle(on: view, duration: duration, completion: completion)
+        case .rotation:
+            animateRotation(on: view, duration: duration, completion: completion)
+        }
+    }
+
+    private func animateFlip(
+        on view: UIView,
+        duration: TimeInterval,
+        completion: @escaping (Bool) -> Void
+    ) {
         let direction: UIView.AnimationOptions = Bool.random()
             ? .transitionFlipFromLeft
             : .transitionFlipFromRight
@@ -150,8 +185,109 @@ public final class RandomFlipManager: NSObject {
             duration: duration,
             options: options,
             animations: nil
-        ) { [weak self, weak view] _ in
-            self?.finishAnimation(token: token, expectedView: view)
+        ) { finished in
+            completion(finished)
+        }
+    }
+
+    private func animateBounce(
+        on view: UIView,
+        duration: TimeInterval,
+        completion: @escaping (Bool) -> Void
+    ) {
+        let baseTransform = view.transform
+        let options: UIView.KeyframeAnimationOptions = [
+            .calculationModeCubic,
+            .beginFromCurrentState,
+            .allowUserInteraction
+        ]
+
+        UIView.animateKeyframes(
+            withDuration: min(duration, 0.65),
+            delay: 0,
+            options: options
+        ) {
+            UIView.addKeyframe(withRelativeStartTime: 0.00, relativeDuration: 0.24) {
+                view.transform = baseTransform.scaledBy(x: 0.74, y: 0.74)
+            }
+            UIView.addKeyframe(withRelativeStartTime: 0.24, relativeDuration: 0.32) {
+                view.transform = baseTransform.scaledBy(x: 1.20, y: 1.20)
+            }
+            UIView.addKeyframe(withRelativeStartTime: 0.56, relativeDuration: 0.20) {
+                view.transform = baseTransform.scaledBy(x: 0.94, y: 0.94)
+            }
+            UIView.addKeyframe(withRelativeStartTime: 0.76, relativeDuration: 0.24) {
+                view.transform = baseTransform
+            }
+        } completion: { finished in
+            completion(finished)
+        }
+    }
+
+    private func animateWiggle(
+        on view: UIView,
+        duration: TimeInterval,
+        completion: @escaping (Bool) -> Void
+    ) {
+        let baseTransform = view.transform
+        let angle = CGFloat.pi / 12.0
+        let options: UIView.KeyframeAnimationOptions = [
+            .calculationModeCubic,
+            .beginFromCurrentState,
+            .allowUserInteraction
+        ]
+
+        UIView.animateKeyframes(
+            withDuration: min(duration, 0.75),
+            delay: 0,
+            options: options
+        ) {
+            UIView.addKeyframe(withRelativeStartTime: 0.00, relativeDuration: 0.20) {
+                view.transform = baseTransform.rotated(by: angle)
+            }
+            UIView.addKeyframe(withRelativeStartTime: 0.20, relativeDuration: 0.25) {
+                view.transform = baseTransform.rotated(by: -angle)
+            }
+            UIView.addKeyframe(withRelativeStartTime: 0.45, relativeDuration: 0.22) {
+                view.transform = baseTransform.rotated(by: angle * 0.60)
+            }
+            UIView.addKeyframe(withRelativeStartTime: 0.67, relativeDuration: 0.33) {
+                view.transform = baseTransform
+            }
+        } completion: { finished in
+            completion(finished)
+        }
+    }
+
+    private func animateRotation(
+        on view: UIView,
+        duration: TimeInterval,
+        completion: @escaping (Bool) -> Void
+    ) {
+        let baseTransform = view.transform
+        let direction: CGFloat = Bool.random() ? 1.0 : -1.0
+        let angle = direction * CGFloat.pi / 6.0
+        let options: UIView.KeyframeAnimationOptions = [
+            .calculationModeCubic,
+            .beginFromCurrentState,
+            .allowUserInteraction
+        ]
+
+        UIView.animateKeyframes(
+            withDuration: min(duration, 0.80),
+            delay: 0,
+            options: options
+        ) {
+            UIView.addKeyframe(withRelativeStartTime: 0.00, relativeDuration: 0.45) {
+                view.transform = baseTransform
+                    .rotated(by: angle)
+                    .scaledBy(x: 1.08, y: 1.08)
+            }
+            UIView.addKeyframe(withRelativeStartTime: 0.45, relativeDuration: 0.55) {
+                view.transform = baseTransform
+            }
+        } completion: { finished in
+            completion(finished)
         }
     }
 
