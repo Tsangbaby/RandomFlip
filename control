@@ -7,6 +7,7 @@ Description: Randomly flips visible Home Screen icons. Swift-core rewrite for iO
 Maintainer: Tsangbaby
 Author: Tsangbaby
 Icon: https://tsangbaby.github.io/Icon/RandomIconFlip.png
+SileoDepiction: https://tsangbaby.github.io/depictions/com.tsangbaby.randomiconsflip/depiction.json
 Conflicts: net.limneos.randomiconsflip
 Replaces: net.limneos.randomiconsflip
 Section: Tweaks

@@ -139,6 +139,10 @@ class RandomFlipSwiftSourceContract(unittest.TestCase):
         self.assertRegex(control, r"(?m)^Maintainer: Tsangbaby$")
         self.assertRegex(control, r"(?m)^Author: Tsangbaby$")
         self.assertRegex(control, r"(?m)^Icon: https://tsangbaby\.github\.io/Icon/RandomIconFlip\.png$")
+        self.assertRegex(
+            control,
+            r"(?m)^SileoDepiction: https://tsangbaby\.github\.io/depictions/com\.tsangbaby\.randomiconsflip/depiction\.json$",
+        )
         self.assertRegex(control, r"(?m)^Conflicts: net\.limneos\.randomiconsflip$")
         self.assertRegex(control, r"(?m)^Replaces: net\.limneos\.randomiconsflip$")
         self.assertIn("runs-on: macos-14", workflow)
