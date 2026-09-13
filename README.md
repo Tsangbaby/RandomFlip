@@ -8,7 +8,7 @@
 - 最低部署版本：iOS 15.0
 - 架构：Swift 核心 + 极小 Logos 启动 Hook
 - 注入范围：仅 `com.apple.springboard`
-- 当前候选版本：RootHide `0.0.2`
+- 当前候选版本：RootHide `0.0.3`
 - Debian 包标识符：`com.tsangbaby.randomiconsflip`
 - Rootless / RootHide：项目结构预留，可由现代 Theos scheme 构建
 - 编译方式：由 GitHub Actions `macos-14` 云端构建
@@ -80,7 +80,7 @@ RandomFlip-Swift/
 
 ```sh
 # RootHide
-make clean package FINALPACKAGE=1 PACKAGE_VERSION=0.0.2 THEOS_PACKAGE_SCHEME=roothide
+make clean package FINALPACKAGE=1 PACKAGE_VERSION=0.0.3 THEOS_PACKAGE_SCHEME=roothide
 ```
 
 构建前应先确认所用 Theos 版本确实包含 RootHide scheme，并使用至少 iOS 15 SDK。不要把通过 Python 源码合同等同于 Swift 编译成功。
