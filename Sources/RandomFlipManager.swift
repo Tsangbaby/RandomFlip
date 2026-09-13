@@ -9,6 +9,9 @@ public final class RandomFlipManager: NSObject {
         case bounce
         case wiggle
         case rotation
+        case horizontalShake
+        case jumpLanding
+        case jelly
     }
 
     private static let singleton = RandomFlipManager(environment: SpringBoardEnvironment())
@@ -19,7 +22,10 @@ public final class RandomFlipManager: NSObject {
         .flip,
         .bounce, .bounce,
         .wiggle, .wiggle,
-        .rotation, .rotation
+        .rotation, .rotation,
+        .horizontalShake, .horizontalShake,
+        .jumpLanding, .jumpLanding,
+        .jelly, .jelly
     ]
 
     private let environment: SpringBoardEnvironment
@@ -163,6 +169,12 @@ public final class RandomFlipManager: NSObject {
             animateWiggle(on: view, duration: duration, completion: completion)
         case .rotation:
             animateRotation(on: view, duration: duration, completion: completion)
+        case .horizontalShake:
+            animateHorizontalShake(on: view, duration: duration, completion: completion)
+        case .jumpLanding:
+            animateJumpLanding(on: view, duration: duration, completion: completion)
+        case .jelly:
+            animateJelly(on: view, duration: duration, completion: completion)
         }
     }
 
@@ -284,6 +296,118 @@ public final class RandomFlipManager: NSObject {
                     .scaledBy(x: 1.08, y: 1.08)
             }
             UIView.addKeyframe(withRelativeStartTime: 0.45, relativeDuration: 0.55) {
+                view.transform = baseTransform
+            }
+        } completion: { finished in
+            completion(finished)
+        }
+    }
+
+    private func animateHorizontalShake(
+        on view: UIView,
+        duration: TimeInterval,
+        completion: @escaping (Bool) -> Void
+    ) {
+        let baseTransform = view.transform
+        let horizontalOffset: CGFloat = 10.0
+        let options: UIView.KeyframeAnimationOptions = [
+            .calculationModeCubic,
+            .beginFromCurrentState,
+            .allowUserInteraction
+        ]
+
+        UIView.animateKeyframes(
+            withDuration: min(duration, 0.70),
+            delay: 0,
+            options: options
+        ) {
+            UIView.addKeyframe(withRelativeStartTime: 0.00, relativeDuration: 0.18) {
+                view.transform = baseTransform.translatedBy(x: horizontalOffset, y: 0)
+            }
+            UIView.addKeyframe(withRelativeStartTime: 0.18, relativeDuration: 0.20) {
+                view.transform = baseTransform.translatedBy(x: -horizontalOffset, y: 0)
+            }
+            UIView.addKeyframe(withRelativeStartTime: 0.38, relativeDuration: 0.18) {
+                view.transform = baseTransform.translatedBy(x: horizontalOffset * 0.70, y: 0)
+            }
+            UIView.addKeyframe(withRelativeStartTime: 0.56, relativeDuration: 0.18) {
+                view.transform = baseTransform.translatedBy(x: -horizontalOffset * 0.45, y: 0)
+            }
+            UIView.addKeyframe(withRelativeStartTime: 0.74, relativeDuration: 0.26) {
+                view.transform = baseTransform
+            }
+        } completion: { finished in
+            completion(finished)
+        }
+    }
+
+    private func animateJumpLanding(
+        on view: UIView,
+        duration: TimeInterval,
+        completion: @escaping (Bool) -> Void
+    ) {
+        let baseTransform = view.transform
+        let jumpHeight: CGFloat = 12.0
+        let landingDepth: CGFloat = 3.0
+        let options: UIView.KeyframeAnimationOptions = [
+            .calculationModeCubic,
+            .beginFromCurrentState,
+            .allowUserInteraction
+        ]
+
+        UIView.animateKeyframes(
+            withDuration: min(duration, 0.75),
+            delay: 0,
+            options: options
+        ) {
+            UIView.addKeyframe(withRelativeStartTime: 0.00, relativeDuration: 0.42) {
+                view.transform = baseTransform.translatedBy(x: 0, y: -jumpHeight)
+                    .scaledBy(x: 1.08, y: 1.08)
+            }
+            UIView.addKeyframe(withRelativeStartTime: 0.42, relativeDuration: 0.26) {
+                view.transform = baseTransform.translatedBy(x: 0, y: landingDepth)
+                    .scaledBy(x: 1.10, y: 0.88)
+            }
+            UIView.addKeyframe(withRelativeStartTime: 0.68, relativeDuration: 0.16) {
+                view.transform = baseTransform
+                    .translatedBy(x: 0, y: -2.0)
+                    .scaledBy(x: 0.98, y: 1.04)
+            }
+            UIView.addKeyframe(withRelativeStartTime: 0.84, relativeDuration: 0.16) {
+                view.transform = baseTransform
+            }
+        } completion: { finished in
+            completion(finished)
+        }
+    }
+
+    private func animateJelly(
+        on view: UIView,
+        duration: TimeInterval,
+        completion: @escaping (Bool) -> Void
+    ) {
+        let baseTransform = view.transform
+        let options: UIView.KeyframeAnimationOptions = [
+            .calculationModeCubic,
+            .beginFromCurrentState,
+            .allowUserInteraction
+        ]
+
+        UIView.animateKeyframes(
+            withDuration: min(duration, 0.70),
+            delay: 0,
+            options: options
+        ) {
+            UIView.addKeyframe(withRelativeStartTime: 0.00, relativeDuration: 0.28) {
+                view.transform = baseTransform.scaledBy(x: 1.16, y: 0.84)
+            }
+            UIView.addKeyframe(withRelativeStartTime: 0.28, relativeDuration: 0.30) {
+                view.transform = baseTransform.scaledBy(x: 0.88, y: 1.14)
+            }
+            UIView.addKeyframe(withRelativeStartTime: 0.58, relativeDuration: 0.20) {
+                view.transform = baseTransform.scaledBy(x: 1.06, y: 0.95)
+            }
+            UIView.addKeyframe(withRelativeStartTime: 0.78, relativeDuration: 0.22) {
                 view.transform = baseTransform
             }
         } completion: { finished in

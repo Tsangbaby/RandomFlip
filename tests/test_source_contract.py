@@ -81,10 +81,18 @@ class RandomFlipSwiftSourceContract(unittest.TestCase):
         self.assertIn("consecutiveReadyTicks = 0", manager)
         self.assertGreaterEqual((manager + environment).count("@MainActor"), 2)
 
-    def test_random_animation_pool_adds_three_transform_safe_styles(self) -> None:
+    def test_random_animation_pool_uses_seven_transform_safe_styles(self) -> None:
         manager = (ROOT / "Sources" / "RandomFlipManager.swift").read_text(encoding="utf-8")
 
-        for style in ("flip", "bounce", "wiggle", "rotation"):
+        for style in (
+            "flip",
+            "bounce",
+            "wiggle",
+            "rotation",
+            "horizontalShake",
+            "jumpLanding",
+            "jelly",
+        ):
             self.assertIn(f"case {style}", manager)
 
         pool = re.search(
@@ -93,18 +101,46 @@ class RandomFlipSwiftSourceContract(unittest.TestCase):
             re.DOTALL,
         )
         self.assertIsNotNone(pool)
-        styles = re.findall(r"\.(flip|bounce|wiggle|rotation)", pool.group(1))
+        styles = re.findall(
+            r"\.(flip|bounce|wiggle|rotation|horizontalShake|jumpLanding|jelly)",
+            pool.group(1),
+        )
         self.assertCountEqual(
             styles,
-            ["flip", "bounce", "bounce", "wiggle", "wiggle", "rotation", "rotation"],
+            [
+                "flip",
+                "bounce", "bounce",
+                "wiggle", "wiggle",
+                "rotation", "rotation",
+                "horizontalShake", "horizontalShake",
+                "jumpLanding", "jumpLanding",
+                "jelly", "jelly",
+            ],
         )
         self.assertEqual(styles.count("flip"), 1)
+        for style in (
+            "bounce",
+            "wiggle",
+            "rotation",
+            "horizontalShake",
+            "jumpLanding",
+            "jelly",
+        ):
+            self.assertEqual(styles.count(style), 2)
         self.assertIn("Self.animationPool.randomElement() ?? .flip", manager)
 
-        for helper in ("animateFlip", "animateBounce", "animateWiggle", "animateRotation"):
+        for helper in (
+            "animateFlip",
+            "animateBounce",
+            "animateWiggle",
+            "animateRotation",
+            "animateHorizontalShake",
+            "animateJumpLanding",
+            "animateJelly",
+        ):
             self.assertIn(f"private func {helper}", manager)
         self.assertIn("UIView.animateKeyframes", manager)
-        self.assertGreaterEqual(manager.count("let baseTransform = view.transform"), 3)
+        self.assertGreaterEqual(manager.count("let baseTransform = view.transform"), 6)
         self.assertIn("baseTransform.scaledBy", manager)
         self.assertIn("baseTransform.rotated(by:", manager)
         self.assertGreaterEqual(manager.count("view.transform = baseTransform"), 3)
@@ -140,6 +176,78 @@ class RandomFlipSwiftSourceContract(unittest.TestCase):
         self.assertIn("view.transform = baseTransform", manager)
         self.assertNotIn("view.frame =", manager)
         self.assertNotIn("view.center =", manager)
+
+    def test_horizontal_shake_translates_and_restores_the_icon_image(self) -> None:
+        manager = (ROOT / "Sources" / "RandomFlipManager.swift").read_text(encoding="utf-8")
+
+        self.assertIn("case horizontalShake", manager)
+        pool = re.search(
+            r"private static let animationPool: \[IconAnimationStyle\] = \[(.*?)\]",
+            manager,
+            re.DOTALL,
+        )
+        self.assertIsNotNone(pool)
+        self.assertEqual(pool.group(1).count(".horizontalShake"), 2)
+        self.assertIn("case .horizontalShake:", manager)
+        self.assertIn("animateHorizontalShake(on: view, duration: duration, completion: completion)", manager)
+        self.assertIn("private func animateHorizontalShake", manager)
+        self.assertIn("let horizontalOffset: CGFloat = 10.0", manager)
+        self.assertIn("baseTransform.translatedBy(x: horizontalOffset, y: 0)", manager)
+        self.assertIn("baseTransform.translatedBy(x: -horizontalOffset, y: 0)", manager)
+        self.assertIn("baseTransform.translatedBy(x: horizontalOffset * 0.70, y: 0)", manager)
+        self.assertIn("baseTransform.translatedBy(x: -horizontalOffset * 0.45, y: 0)", manager)
+        self.assertIn("view.transform = baseTransform", manager)
+        self.assertNotIn("view.frame =", manager)
+        self.assertNotIn("view.center =", manager)
+        self.assertNotIn("removeAllAnimations", manager)
+
+    def test_jump_landing_moves_vertically_and_restores_the_icon_image(self) -> None:
+        manager = (ROOT / "Sources" / "RandomFlipManager.swift").read_text(encoding="utf-8")
+
+        self.assertIn("case jumpLanding", manager)
+        pool = re.search(
+            r"private static let animationPool: \[IconAnimationStyle\] = \[(.*?)\]",
+            manager,
+            re.DOTALL,
+        )
+        self.assertIsNotNone(pool)
+        self.assertEqual(pool.group(1).count(".jumpLanding"), 2)
+        self.assertIn("case .jumpLanding:", manager)
+        self.assertIn("animateJumpLanding(on: view, duration: duration, completion: completion)", manager)
+        self.assertIn("private func animateJumpLanding", manager)
+        self.assertIn("let jumpHeight: CGFloat = 12.0", manager)
+        self.assertIn("let landingDepth: CGFloat = 3.0", manager)
+        self.assertIn("baseTransform.translatedBy(x: 0, y: -jumpHeight)", manager)
+        self.assertIn(".scaledBy(x: 1.08, y: 1.08)", manager)
+        self.assertIn("baseTransform.translatedBy(x: 0, y: landingDepth)", manager)
+        self.assertIn(".scaledBy(x: 1.10, y: 0.88)", manager)
+        self.assertIn("view.transform = baseTransform", manager)
+        self.assertNotIn("view.frame =", manager)
+        self.assertNotIn("view.center =", manager)
+        self.assertNotIn("removeAllAnimations", manager)
+
+    def test_jelly_squash_uses_nonuniform_scaling_and_restores_the_icon_image(self) -> None:
+        manager = (ROOT / "Sources" / "RandomFlipManager.swift").read_text(encoding="utf-8")
+
+        self.assertIn("case jelly", manager)
+        pool = re.search(
+            r"private static let animationPool: \[IconAnimationStyle\] = \[(.*?)\]",
+            manager,
+            re.DOTALL,
+        )
+        self.assertIsNotNone(pool)
+        self.assertEqual(pool.group(1).count(".jelly"), 2)
+        self.assertIn("case .jelly:", manager)
+        self.assertIn("animateJelly(on: view, duration: duration, completion: completion)", manager)
+        self.assertIn("private func animateJelly", manager)
+        self.assertIn("baseTransform.scaledBy(x: 1.16, y: 0.84)", manager)
+        self.assertIn("baseTransform.scaledBy(x: 0.88, y: 1.14)", manager)
+        self.assertIn("baseTransform.scaledBy(x: 1.06, y: 0.95)", manager)
+        self.assertIn("view.transform = baseTransform", manager)
+        self.assertNotIn("view.frame =", manager)
+        self.assertNotIn("view.center =", manager)
+        self.assertNotIn("view.alpha =", manager)
+        self.assertNotIn("removeAllAnimations", manager)
 
     def test_displayed_icon_discovery_includes_generic_floating_docks(self) -> None:
         header = (ROOT / "RandomIconsFlip-Bridging-Header.h").read_text(encoding="utf-8")
@@ -194,8 +302,8 @@ class RandomFlipSwiftSourceContract(unittest.TestCase):
         makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
         workflow = (ROOT / ".github" / "workflows" / "build-roothide.yml").read_text(encoding="utf-8")
 
-        self.assertRegex(control, r"(?m)^Version: 0\.0\.4$")
-        self.assertRegex(makefile, r"(?m)^PACKAGE_VERSION = 0\.0\.4$")
+        self.assertRegex(control, r"(?m)^Version: 0\.0\.5$")
+        self.assertRegex(makefile, r"(?m)^PACKAGE_VERSION = 0\.0\.5$")
         self.assertRegex(control, r"(?m)^Maintainer: Tsangbaby$")
         self.assertRegex(control, r"(?m)^Author: Tsangbaby$")
         self.assertRegex(control, r"(?m)^Icon: https://tsangbaby\.github\.io/Icon/RandomIconFlip\.png$")
@@ -218,7 +326,7 @@ class RandomFlipSwiftSourceContract(unittest.TestCase):
         self.assertIn("actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683", workflow)
         self.assertIn("actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02", workflow)
         self.assertIn("com.tsangbaby.randomiconsflip", workflow)
-        self.assertIn("PACKAGE_VERSION: 0.0.4", workflow)
+        self.assertIn("PACKAGE_VERSION: 0.0.5", workflow)
         self.assertNotIn("rootless", workflow.lower())
 
     def test_active_identity_has_no_legacy_author_or_package(self) -> None:
