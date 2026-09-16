@@ -44,8 +44,8 @@ jobs:
           test "${{ inputs.scheme }}" = "roothide"
           test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
           test -z "$(git status --porcelain)"
-          grep -Eq '^Version: 0\.0\.6$' control
-          grep -Eq '^PACKAGE_VERSION = 0\.0\.6$' Makefile
+          grep -Eq "^Version: ${PACKAGE_VERSION}$" control
+          grep -Eq "^PACKAGE_VERSION = ${PACKAGE_VERSION}$" Makefile
 
       - name: Inspect Apple toolchain
         shell: bash

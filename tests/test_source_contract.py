@@ -406,6 +406,9 @@ class RandomFlipSwiftSourceContract(unittest.TestCase):
         self.assertIn("actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02", workflow)
         self.assertIn("com.tsangbaby.randomiconsflip", workflow)
         self.assertIn("PACKAGE_VERSION: 0.0.7", workflow)
+        self.assertIn('grep -Eq "^Version: ${PACKAGE_VERSION}$" control', workflow)
+        self.assertIn('grep -Eq "^PACKAGE_VERSION = ${PACKAGE_VERSION}$" Makefile', workflow)
+        self.assertNotIn("0\\.0\\.6", workflow)
         self.assertNotIn("rootless", workflow.lower())
 
     def test_active_identity_has_no_legacy_author_or_package(self) -> None:
