@@ -12,6 +12,8 @@ public final class RandomFlipManager: NSObject {
         case horizontalShake
         case jumpLanding
         case jelly
+        case orbitSpiral
+        case flutterLeaf
     }
 
     private static let singleton = RandomFlipManager(environment: SpringBoardEnvironment())
@@ -25,7 +27,9 @@ public final class RandomFlipManager: NSObject {
         .rotation, .rotation,
         .horizontalShake, .horizontalShake,
         .jumpLanding, .jumpLanding,
-        .jelly, .jelly
+        .jelly, .jelly,
+        .orbitSpiral, .orbitSpiral,
+        .flutterLeaf, .flutterLeaf
     ]
 
     private let environment: SpringBoardEnvironment
@@ -175,6 +179,10 @@ public final class RandomFlipManager: NSObject {
             animateJumpLanding(on: view, duration: duration, completion: completion)
         case .jelly:
             animateJelly(on: view, duration: duration, completion: completion)
+        case .orbitSpiral:
+            animateOrbitSpiral(on: view, duration: duration, completion: completion)
+        case .flutterLeaf:
+            animateFlutterLeaf(on: view, duration: duration, completion: completion)
         }
     }
 
@@ -406,6 +414,116 @@ public final class RandomFlipManager: NSObject {
             }
             UIView.addKeyframe(withRelativeStartTime: 0.58, relativeDuration: 0.20) {
                 view.transform = baseTransform.scaledBy(x: 1.06, y: 0.95)
+            }
+            UIView.addKeyframe(withRelativeStartTime: 0.78, relativeDuration: 0.22) {
+                view.transform = baseTransform
+            }
+        } completion: { finished in
+            completion(finished)
+        }
+    }
+
+    private func animateOrbitSpiral(
+        on view: UIView,
+        duration: TimeInterval,
+        completion: @escaping (Bool) -> Void
+    ) {
+        let baseTransform = view.transform
+        let orbitRadiusX: CGFloat = 16.0
+        let orbitRadiusY: CGFloat = 13.0
+        let orbitAngle = CGFloat.pi / 7.0
+        let options: UIView.KeyframeAnimationOptions = [
+            .calculationModeCubic,
+            .beginFromCurrentState,
+            .allowUserInteraction
+        ]
+
+        UIView.animateKeyframes(
+            withDuration: min(duration, 0.90),
+            delay: 0,
+            options: options
+        ) {
+            UIView.addKeyframe(withRelativeStartTime: 0.00, relativeDuration: 0.20) {
+                view.transform = baseTransform
+                    .translatedBy(x: orbitRadiusX, y: -orbitRadiusY)
+                    .rotated(by: orbitAngle)
+                    .scaledBy(x: 1.10, y: 1.10)
+            }
+            UIView.addKeyframe(withRelativeStartTime: 0.20, relativeDuration: 0.22) {
+                view.transform = baseTransform
+                    .translatedBy(x: -orbitRadiusX * 0.72, y: -orbitRadiusY * 0.82)
+                    .rotated(by: -orbitAngle * 0.72)
+                    .scaledBy(x: 0.96, y: 1.06)
+            }
+            UIView.addKeyframe(withRelativeStartTime: 0.42, relativeDuration: 0.22) {
+                view.transform = baseTransform
+                    .translatedBy(x: -orbitRadiusX, y: orbitRadiusY)
+                    .rotated(by: -orbitAngle * 1.25)
+                    .scaledBy(x: 0.92, y: 0.92)
+            }
+            UIView.addKeyframe(withRelativeStartTime: 0.64, relativeDuration: 0.18) {
+                view.transform = baseTransform
+                    .translatedBy(x: orbitRadiusX * 0.56, y: orbitRadiusY * 0.62)
+                    .rotated(by: orbitAngle * 0.62)
+                    .scaledBy(x: 1.04, y: 0.98)
+            }
+            UIView.addKeyframe(withRelativeStartTime: 0.82, relativeDuration: 0.18) {
+                view.transform = baseTransform
+                    .translatedBy(x: orbitRadiusX * 0.24, y: -orbitRadiusY * 0.20)
+                    .rotated(by: -orbitAngle * 0.24)
+                    .scaledBy(x: 1.02, y: 1.01)
+            }
+            UIView.addKeyframe(withRelativeStartTime: 0.94, relativeDuration: 0.06) {
+                view.transform = baseTransform
+            }
+        } completion: { finished in
+            completion(finished)
+        }
+    }
+
+    private func animateFlutterLeaf(
+        on view: UIView,
+        duration: TimeInterval,
+        completion: @escaping (Bool) -> Void
+    ) {
+        let baseTransform = view.transform
+        let leafOffsetX: CGFloat = 12.0
+        let leafOffsetY: CGFloat = 8.0
+        let leafAngle = CGFloat.pi / 10.0
+        let options: UIView.KeyframeAnimationOptions = [
+            .calculationModeCubic,
+            .beginFromCurrentState,
+            .allowUserInteraction
+        ]
+
+        UIView.animateKeyframes(
+            withDuration: min(duration, 0.85),
+            delay: 0,
+            options: options
+        ) {
+            UIView.addKeyframe(withRelativeStartTime: 0.00, relativeDuration: 0.18) {
+                view.transform = baseTransform
+                    .translatedBy(x: -leafOffsetX, y: -leafOffsetY)
+                    .rotated(by: -leafAngle)
+                    .scaledBy(x: 1.06, y: 0.95)
+            }
+            UIView.addKeyframe(withRelativeStartTime: 0.18, relativeDuration: 0.22) {
+                view.transform = baseTransform
+                    .translatedBy(x: leafOffsetX, y: leafOffsetY)
+                    .rotated(by: leafAngle)
+                    .scaledBy(x: 0.96, y: 1.04)
+            }
+            UIView.addKeyframe(withRelativeStartTime: 0.40, relativeDuration: 0.20) {
+                view.transform = baseTransform
+                    .translatedBy(x: -leafOffsetX * 0.62, y: leafOffsetY * 0.52)
+                    .rotated(by: -leafAngle * 0.58)
+                    .scaledBy(x: 1.04, y: 0.97)
+            }
+            UIView.addKeyframe(withRelativeStartTime: 0.60, relativeDuration: 0.18) {
+                view.transform = baseTransform
+                    .translatedBy(x: leafOffsetX * 0.38, y: -leafOffsetY * 0.30)
+                    .rotated(by: leafAngle * 0.32)
+                    .scaledBy(x: 0.99, y: 1.02)
             }
             UIView.addKeyframe(withRelativeStartTime: 0.78, relativeDuration: 0.22) {
                 view.transform = baseTransform
