@@ -13,6 +13,7 @@ public final class RandomFlipManager: NSObject {
         case jumpLanding
         case jelly
         case orbitSpiral
+        case flutterLeaf
     }
 
     private static let singleton = RandomFlipManager(environment: SpringBoardEnvironment())
@@ -27,7 +28,8 @@ public final class RandomFlipManager: NSObject {
         .horizontalShake, .horizontalShake,
         .jumpLanding, .jumpLanding,
         .jelly, .jelly,
-        .orbitSpiral, .orbitSpiral
+        .orbitSpiral, .orbitSpiral,
+        .flutterLeaf, .flutterLeaf
     ]
 
     private let environment: SpringBoardEnvironment
@@ -179,6 +181,8 @@ public final class RandomFlipManager: NSObject {
             animateJelly(on: view, duration: duration, completion: completion)
         case .orbitSpiral:
             animateOrbitSpiral(on: view, duration: duration, completion: completion)
+        case .flutterLeaf:
+            animateFlutterLeaf(on: view, duration: duration, completion: completion)
         }
     }
 
@@ -470,6 +474,58 @@ public final class RandomFlipManager: NSObject {
                     .scaledBy(x: 1.02, y: 1.01)
             }
             UIView.addKeyframe(withRelativeStartTime: 0.94, relativeDuration: 0.06) {
+                view.transform = baseTransform
+            }
+        } completion: { finished in
+            completion(finished)
+        }
+    }
+
+    private func animateFlutterLeaf(
+        on view: UIView,
+        duration: TimeInterval,
+        completion: @escaping (Bool) -> Void
+    ) {
+        let baseTransform = view.transform
+        let leafOffsetX: CGFloat = 12.0
+        let leafOffsetY: CGFloat = 8.0
+        let leafAngle = CGFloat.pi / 10.0
+        let options: UIView.KeyframeAnimationOptions = [
+            .calculationModeCubic,
+            .beginFromCurrentState,
+            .allowUserInteraction
+        ]
+
+        UIView.animateKeyframes(
+            withDuration: min(duration, 0.85),
+            delay: 0,
+            options: options
+        ) {
+            UIView.addKeyframe(withRelativeStartTime: 0.00, relativeDuration: 0.18) {
+                view.transform = baseTransform
+                    .translatedBy(x: -leafOffsetX, y: -leafOffsetY)
+                    .rotated(by: -leafAngle)
+                    .scaledBy(x: 1.06, y: 0.95)
+            }
+            UIView.addKeyframe(withRelativeStartTime: 0.18, relativeDuration: 0.22) {
+                view.transform = baseTransform
+                    .translatedBy(x: leafOffsetX, y: leafOffsetY)
+                    .rotated(by: leafAngle)
+                    .scaledBy(x: 0.96, y: 1.04)
+            }
+            UIView.addKeyframe(withRelativeStartTime: 0.40, relativeDuration: 0.20) {
+                view.transform = baseTransform
+                    .translatedBy(x: -leafOffsetX * 0.62, y: leafOffsetY * 0.52)
+                    .rotated(by: -leafAngle * 0.58)
+                    .scaledBy(x: 1.04, y: 0.97)
+            }
+            UIView.addKeyframe(withRelativeStartTime: 0.60, relativeDuration: 0.18) {
+                view.transform = baseTransform
+                    .translatedBy(x: leafOffsetX * 0.38, y: -leafOffsetY * 0.30)
+                    .rotated(by: leafAngle * 0.32)
+                    .scaledBy(x: 0.99, y: 1.02)
+            }
+            UIView.addKeyframe(withRelativeStartTime: 0.78, relativeDuration: 0.22) {
                 view.transform = baseTransform
             }
         } completion: { finished in
