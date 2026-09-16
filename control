@@ -1,7 +1,7 @@
 Package: com.tsangbaby.randomiconsflip
 Name: Random Icon Flip
 Depends: firmware (>= 15.0), mobilesubstrate
-Version: 0.0.5
+Version: 0.0.6
 Architecture: iphoneos-arm
 Description: Randomly flips visible Home Screen icons. Swift-core rewrite for iOS 15 and later.
 Maintainer: Tsangbaby

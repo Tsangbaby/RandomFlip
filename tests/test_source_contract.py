@@ -81,7 +81,7 @@ class RandomFlipSwiftSourceContract(unittest.TestCase):
         self.assertIn("consecutiveReadyTicks = 0", manager)
         self.assertGreaterEqual((manager + environment).count("@MainActor"), 2)
 
-    def test_random_animation_pool_uses_seven_transform_safe_styles(self) -> None:
+    def test_random_animation_pool_uses_eight_transform_safe_styles(self) -> None:
         manager = (ROOT / "Sources" / "RandomFlipManager.swift").read_text(encoding="utf-8")
 
         for style in (
@@ -92,6 +92,7 @@ class RandomFlipSwiftSourceContract(unittest.TestCase):
             "horizontalShake",
             "jumpLanding",
             "jelly",
+            "orbitSpiral",
         ):
             self.assertIn(f"case {style}", manager)
 
@@ -101,8 +102,9 @@ class RandomFlipSwiftSourceContract(unittest.TestCase):
             re.DOTALL,
         )
         self.assertIsNotNone(pool)
+        assert pool is not None
         styles = re.findall(
-            r"\.(flip|bounce|wiggle|rotation|horizontalShake|jumpLanding|jelly)",
+            r"\.(flip|bounce|wiggle|rotation|horizontalShake|jumpLanding|jelly|orbitSpiral)",
             pool.group(1),
         )
         self.assertCountEqual(
@@ -115,6 +117,7 @@ class RandomFlipSwiftSourceContract(unittest.TestCase):
                 "horizontalShake", "horizontalShake",
                 "jumpLanding", "jumpLanding",
                 "jelly", "jelly",
+                "orbitSpiral", "orbitSpiral",
             ],
         )
         self.assertEqual(styles.count("flip"), 1)
@@ -125,6 +128,7 @@ class RandomFlipSwiftSourceContract(unittest.TestCase):
             "horizontalShake",
             "jumpLanding",
             "jelly",
+            "orbitSpiral",
         ):
             self.assertEqual(styles.count(style), 2)
         self.assertIn("Self.animationPool.randomElement() ?? .flip", manager)
@@ -137,10 +141,11 @@ class RandomFlipSwiftSourceContract(unittest.TestCase):
             "animateHorizontalShake",
             "animateJumpLanding",
             "animateJelly",
+            "animateOrbitSpiral",
         ):
             self.assertIn(f"private func {helper}", manager)
         self.assertIn("UIView.animateKeyframes", manager)
-        self.assertGreaterEqual(manager.count("let baseTransform = view.transform"), 6)
+        self.assertGreaterEqual(manager.count("let baseTransform = view.transform"), 7)
         self.assertIn("baseTransform.scaledBy", manager)
         self.assertIn("baseTransform.rotated(by:", manager)
         self.assertGreaterEqual(manager.count("view.transform = baseTransform"), 3)
@@ -249,6 +254,40 @@ class RandomFlipSwiftSourceContract(unittest.TestCase):
         self.assertNotIn("view.alpha =", manager)
         self.assertNotIn("removeAllAnimations", manager)
 
+    def test_orbit_spiral_has_noticeable_transform_path_and_restores_the_icon_image(self) -> None:
+        manager = (ROOT / "Sources" / "RandomFlipManager.swift").read_text(encoding="utf-8")
+
+        self.assertIn("case orbitSpiral", manager)
+        pool = re.search(
+            r"private static let animationPool: \[IconAnimationStyle\] = \[(.*?)\]",
+            manager,
+            re.DOTALL,
+        )
+        self.assertIsNotNone(pool)
+        assert pool is not None
+        self.assertEqual(pool.group(1).count(".orbitSpiral"), 2)
+        self.assertIn("case .orbitSpiral:", manager)
+        self.assertIn("animateOrbitSpiral(on: view, duration: duration, completion: completion)", manager)
+        self.assertIn("private func animateOrbitSpiral", manager)
+        self.assertIn("let orbitRadiusX: CGFloat = 16.0", manager)
+        self.assertIn("let orbitRadiusY: CGFloat = 13.0", manager)
+        self.assertIn("let orbitAngle = CGFloat.pi / 7.0", manager)
+        self.assertRegex(
+            manager,
+            r"baseTransform\s*\.translatedBy\(x:\s*orbitRadiusX,\s*y:\s*-orbitRadiusY\)",
+        )
+        self.assertRegex(
+            manager,
+            r"baseTransform\s*\.translatedBy\(x:\s*-orbitRadiusX,\s*y:\s*orbitRadiusY\)",
+        )
+        self.assertIn(".rotated(by: orbitAngle)", manager)
+        self.assertIn(".scaledBy(x: 1.10, y: 1.10)", manager)
+        self.assertIn("view.transform = baseTransform", manager)
+        self.assertNotIn("view.frame =", manager)
+        self.assertNotIn("view.center =", manager)
+        self.assertNotIn("layer.transform", manager)
+        self.assertNotIn("removeAllAnimations", manager)
+
     def test_displayed_icon_discovery_includes_generic_floating_docks(self) -> None:
         header = (ROOT / "RandomIconsFlip-Bridging-Header.h").read_text(encoding="utf-8")
         bridge = (ROOT / "RuntimeBridge.m").read_text(encoding="utf-8")
@@ -302,8 +341,8 @@ class RandomFlipSwiftSourceContract(unittest.TestCase):
         makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
         workflow = (ROOT / ".github" / "workflows" / "build-roothide.yml").read_text(encoding="utf-8")
 
-        self.assertRegex(control, r"(?m)^Version: 0\.0\.5$")
-        self.assertRegex(makefile, r"(?m)^PACKAGE_VERSION = 0\.0\.5$")
+        self.assertRegex(control, r"(?m)^Version: 0\.0\.6$")
+        self.assertRegex(makefile, r"(?m)^PACKAGE_VERSION = 0\.0\.6$")
         self.assertRegex(control, r"(?m)^Maintainer: Tsangbaby$")
         self.assertRegex(control, r"(?m)^Author: Tsangbaby$")
         self.assertRegex(control, r"(?m)^Icon: https://tsangbaby\.github\.io/Icon/RandomIconFlip\.png$")
@@ -326,7 +365,7 @@ class RandomFlipSwiftSourceContract(unittest.TestCase):
         self.assertIn("actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683", workflow)
         self.assertIn("actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02", workflow)
         self.assertIn("com.tsangbaby.randomiconsflip", workflow)
-        self.assertIn("PACKAGE_VERSION: 0.0.5", workflow)
+        self.assertIn("PACKAGE_VERSION: 0.0.6", workflow)
         self.assertNotIn("rootless", workflow.lower())
 
     def test_active_identity_has_no_legacy_author_or_package(self) -> None:
