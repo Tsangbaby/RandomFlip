@@ -81,7 +81,7 @@ class RandomFlipSwiftSourceContract(unittest.TestCase):
         self.assertIn("consecutiveReadyTicks = 0", manager)
         self.assertGreaterEqual((manager + environment).count("@MainActor"), 2)
 
-    def test_random_animation_pool_uses_nine_transform_safe_styles(self) -> None:
+    def test_random_animation_pool_uses_ten_transform_safe_styles(self) -> None:
         manager = (ROOT / "Sources" / "RandomFlipManager.swift").read_text(encoding="utf-8")
 
         for style in (
@@ -94,6 +94,7 @@ class RandomFlipSwiftSourceContract(unittest.TestCase):
             "jelly",
             "orbitSpiral",
             "flutterLeaf",
+            "infinityDrift",
         ):
             self.assertIn(f"case {style}", manager)
 
@@ -105,7 +106,7 @@ class RandomFlipSwiftSourceContract(unittest.TestCase):
         self.assertIsNotNone(pool)
         assert pool is not None
         styles = re.findall(
-            r"\.(flip|bounce|wiggle|rotation|horizontalShake|jumpLanding|jelly|orbitSpiral|flutterLeaf)",
+            r"\.(flip|bounce|wiggle|rotation|horizontalShake|jumpLanding|jelly|orbitSpiral|flutterLeaf|infinityDrift)",
             pool.group(1),
         )
         self.assertCountEqual(
@@ -120,6 +121,7 @@ class RandomFlipSwiftSourceContract(unittest.TestCase):
                 "jelly", "jelly",
                 "orbitSpiral", "orbitSpiral",
                 "flutterLeaf", "flutterLeaf",
+                "infinityDrift", "infinityDrift",
             ],
         )
         self.assertEqual(styles.count("flip"), 1)
@@ -132,6 +134,7 @@ class RandomFlipSwiftSourceContract(unittest.TestCase):
             "jelly",
             "orbitSpiral",
             "flutterLeaf",
+            "infinityDrift",
         ):
             self.assertEqual(styles.count(style), 2)
         self.assertIn("Self.animationPool.randomElement() ?? .flip", manager)
@@ -146,10 +149,11 @@ class RandomFlipSwiftSourceContract(unittest.TestCase):
             "animateJelly",
             "animateOrbitSpiral",
             "animateFlutterLeaf",
+            "animateInfinityDrift",
         ):
             self.assertIn(f"private func {helper}", manager)
         self.assertIn("UIView.animateKeyframes", manager)
-        self.assertGreaterEqual(manager.count("let baseTransform = view.transform"), 8)
+        self.assertGreaterEqual(manager.count("let baseTransform = view.transform"), 9)
         self.assertIn("baseTransform.scaledBy", manager)
         self.assertIn("baseTransform.rotated(by:", manager)
         self.assertGreaterEqual(manager.count("view.transform = baseTransform"), 3)
@@ -328,6 +332,76 @@ class RandomFlipSwiftSourceContract(unittest.TestCase):
         self.assertNotIn("layer.transform", manager)
         self.assertNotIn("removeAllAnimations", manager)
 
+    def test_infinity_drift_traces_a_bounded_figure_eight_and_restores_the_icon_image(self) -> None:
+        manager = (ROOT / "Sources" / "RandomFlipManager.swift").read_text(encoding="utf-8")
+
+        self.assertIn("case infinityDrift", manager)
+        pool = re.search(
+            r"private static let animationPool: \[IconAnimationStyle\] = \[(.*?)\]",
+            manager,
+            re.DOTALL,
+        )
+        self.assertIsNotNone(pool)
+        assert pool is not None
+        self.assertEqual(pool.group(1).count(".infinityDrift"), 2)
+        self.assertIn("case .infinityDrift:", manager)
+        self.assertIn("animateInfinityDrift(on: view, duration: duration, completion: completion)", manager)
+
+        method = re.search(
+            r"private func animateInfinityDrift\((.*?)\n    }\n\n    private func finishAnimation",
+            manager,
+            re.DOTALL,
+        )
+        self.assertIsNotNone(method)
+        assert method is not None
+        body = method.group(1)
+
+        self.assertIn("let infinityOffsetX: CGFloat = 14.0", body)
+        self.assertIn("let infinityOffsetY: CGFloat = 8.0", body)
+        self.assertIn("withDuration: min(duration, 0.95)", body)
+        for expected in (
+            "translatedBy(x: infinityOffsetX * 0.72, y: -infinityOffsetY)",
+            "translatedBy(x: infinityOffsetX, y: 0)",
+            "translatedBy(x: infinityOffsetX * 0.72, y: infinityOffsetY)",
+            "translatedBy(x: -infinityOffsetX * 0.72, y: -infinityOffsetY)",
+            "translatedBy(x: -infinityOffsetX, y: 0)",
+            "translatedBy(x: -infinityOffsetX * 0.72, y: infinityOffsetY)",
+        ):
+            self.assertIn(expected, body)
+        keyframes = re.findall(
+            r"withRelativeStartTime: ([0-9.]+), relativeDuration: ([0-9.]+)",
+            body,
+        )
+        self.assertEqual(
+            keyframes,
+            [
+                ("0.000", "0.125"),
+                ("0.125", "0.125"),
+                ("0.250", "0.125"),
+                ("0.375", "0.125"),
+                ("0.500", "0.125"),
+                ("0.625", "0.125"),
+                ("0.750", "0.125"),
+                ("0.875", "0.125"),
+            ],
+        )
+        keyframe_restores = re.findall(
+            r"view\.transform = baseTransform\n\s*}",
+            body,
+        )
+        self.assertEqual(len(keyframe_restores), 2)
+        self.assertIn(
+            "} completion: { finished in\n            view.transform = baseTransform",
+            body,
+        )
+        self.assertNotIn(".rotated(by:", body)
+        self.assertNotIn(".scaledBy(", body)
+        self.assertNotIn("view.frame =", body)
+        self.assertNotIn("view.center =", body)
+        self.assertNotIn("view.alpha =", body)
+        self.assertNotIn("layer.transform", body)
+        self.assertNotIn("removeAllAnimations", body)
+
     def test_displayed_icon_discovery_includes_generic_floating_docks(self) -> None:
         header = (ROOT / "RandomIconsFlip-Bridging-Header.h").read_text(encoding="utf-8")
         bridge = (ROOT / "RuntimeBridge.m").read_text(encoding="utf-8")
@@ -380,9 +454,10 @@ class RandomFlipSwiftSourceContract(unittest.TestCase):
         control = (ROOT / "control").read_text(encoding="utf-8")
         makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
         workflow = (ROOT / ".github" / "workflows" / "build-roothide.yml").read_text(encoding="utf-8")
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
-        self.assertRegex(control, r"(?m)^Version: 0\.0\.7$")
-        self.assertRegex(makefile, r"(?m)^PACKAGE_VERSION = 0\.0\.7$")
+        self.assertRegex(control, r"(?m)^Version: 0\.0\.8$")
+        self.assertRegex(makefile, r"(?m)^PACKAGE_VERSION = 0\.0\.8$")
         self.assertRegex(control, r"(?m)^Maintainer: Tsangbaby$")
         self.assertRegex(control, r"(?m)^Author: Tsangbaby$")
         self.assertRegex(control, r"(?m)^Icon: https://tsangbaby\.github\.io/Icon/RandomIconFlip\.png$")
@@ -405,9 +480,15 @@ class RandomFlipSwiftSourceContract(unittest.TestCase):
         self.assertIn("actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683", workflow)
         self.assertIn("actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02", workflow)
         self.assertIn("com.tsangbaby.randomiconsflip", workflow)
-        self.assertIn("PACKAGE_VERSION: 0.0.7", workflow)
+        self.assertIn("PACKAGE_VERSION: 0.0.8", workflow)
         self.assertIn('grep -Eq "^Version: ${PACKAGE_VERSION}$" control', workflow)
         self.assertIn('grep -Eq "^PACKAGE_VERSION = ${PACKAGE_VERSION}$" Makefile', workflow)
+        self.assertIn("- 当前候选版本：RootHide `0.0.8`", readme)
+        self.assertIn("Infinity Drift / Figure Eight（∞ 漂移 / 8 字巡航）", readme)
+        self.assertIn("`0.0.7` Flutter / Leaf 已通过实机验证", readme)
+        self.assertIn("`0.0.8` Infinity Drift / Figure Eight 尚待实机验证", readme)
+        self.assertIn("PACKAGE_VERSION=0.0.8", readme)
+        self.assertNotIn("PACKAGE_VERSION: 0.0.7", workflow)
         self.assertNotIn("0\\.0\\.6", workflow)
         self.assertNotIn("rootless", workflow.lower())
 
