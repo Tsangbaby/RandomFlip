@@ -10,7 +10,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DIAGNOSTICS_VERSION = "0.0.9~diag3"
+DIAGNOSTICS_VERSION = "0.0.9~diag4"
 
 
 class AppToHomeDiagnosticsContract(unittest.TestCase):
@@ -43,7 +43,7 @@ class AppToHomeDiagnosticsContract(unittest.TestCase):
         )
         self.assertIn("/tmp/com.tsangbaby.randomiconsflip.transitiondiag.status.txt", guide)
 
-    def test_diag3_uses_private_mobile_sink_and_fixed_low_level_status_file(self) -> None:
+    def test_diag4_uses_private_mobile_sink_and_fixed_low_level_status_file(self) -> None:
         source = self.source()
 
         self.assertIn(
@@ -83,7 +83,7 @@ class AppToHomeDiagnosticsContract(unittest.TestCase):
         self.assertNotIn("exception.reason", source)
         self.assertNotIn("exception.name", source)
 
-    def test_diag3_status_writes_are_async_and_lifetime_bounded(self) -> None:
+    def test_diag4_status_writes_are_async_and_lifetime_bounded(self) -> None:
         source = self.source()
 
         self.assertIn("static dispatch_queue_t RFDiagnosticStatusQueue", source)
@@ -136,6 +136,135 @@ class AppToHomeDiagnosticsContract(unittest.TestCase):
         self.assertNotIn("RFLookupOriginalValue", source)
         self.assertNotIn("RFLookupEventName", source)
         self.assertNotIn("RFOriginalImplementation", source)
+
+    def test_transaction_begin_bool_hook_returns_original_exactly_once(self) -> None:
+        source = self.source()
+
+        self.assertIn("RFHookReturnKindBool", source)
+        self.assertIn("RF_DEFINE_BOOL_LIFECYCLE_HOOK", source)
+        self.assertIn("RFSafelyRecordLifecycleBooleanEvent", source)
+        self.assertIn(
+            '{ "SBToAppsWorkspaceTransaction", "_beginAnimation", '
+            '(IMP)RFTransactionBeginHookReplacement, '
+            '&RFTransactionBeginHookOriginalIMP, RFHookReturnKindBool }',
+            source,
+        )
+
+        macro_start = source.index("#define RF_DEFINE_BOOL_LIFECYCLE_HOOK")
+        macro_end = source.index("\nRF_DEFINE_BOOL_LIFECYCLE_HOOK(", macro_start)
+        macro = source[macro_start:macro_end]
+        original_call = "((BOOL (*)(id, SEL))originalIMP)(object, selector)"
+        self.assertEqual(macro.count(original_call), 1)
+        self.assertLess(macro.index(original_call), macro.index("RFSafelyRecordLifecycleBooleanEvent"))
+        self.assertLess(macro.index("RFSafelyRecordLifecycleBooleanEvent"), macro.index("return result"))
+        self.assertNotIn(
+            "RF_DEFINE_VOID_LIFECYCLE_HOOK(RFTransactionBeginHook", source
+        )
+
+    def test_geometry_hooks_are_exact_abi_gated_and_per_hook_bounded(self) -> None:
+        source = self.source()
+
+        for required in (
+            "RFMaximumGeometryEventsPerHook = 8",
+            "RFReserveGeometryEventSlot",
+            "RFShouldCaptureGeometryEvent",
+            "RFGeometryReturnKindCGRectIndex",
+            "RFGeometryReturnKindDoubleIndex",
+            "RFGeometryReturnKindCornerRadiiIndex",
+            "RFGeometryReturnKindObjectPoint",
+            "RFInstallGeometryHook",
+            "RF_DEFINE_CGRECT_INDEX_GEOMETRY_HOOK",
+            "RF_DEFINE_DOUBLE_INDEX_GEOMETRY_HOOK",
+            "RF_DEFINE_CORNER_RADII_INDEX_GEOMETRY_HOOK",
+            "RF_DEFINE_OBJECT_POINT_GEOMETRY_HOOK",
+            "RFEnqueueGeometryEvent",
+            "geometryHooks",
+            "if (!NSThread.isMainThread)",
+            '"geometryIndex"',
+            '"frameX"',
+            '"frameWidth"',
+            '"scale"',
+            '"cornerTopLeft"',
+            '"targetCenterX"',
+            '"resultPresent"',
+        ):
+            self.assertIn(required, source)
+
+        for specification in (
+            '{ "SBFullScreenToHomeIconZoomSwitcherModifier", "frameForIndex:", '
+            '(IMP)RFIconFrameGeometryHookReplacement, &RFIconFrameGeometryHookOriginalIMP, '
+            'RFGeometryHookIDIconFrame, RFGeometryReturnKindCGRectIndex, '
+            '"{CGRect={CGPoint=dd}{CGSize=dd}}24@0:8Q16" }',
+            '{ "SBFullScreenToHomeIconZoomSwitcherModifier", "scaleForIndex:", '
+            '(IMP)RFIconScaleGeometryHookReplacement, &RFIconScaleGeometryHookOriginalIMP, '
+            'RFGeometryHookIDIconScale, RFGeometryReturnKindDoubleIndex, "d24@0:8Q16" }',
+            '{ "SBFullScreenToHomeIconZoomSwitcherModifier", "cornerRadiiForIndex:", '
+            '(IMP)RFIconCornerGeometryHookReplacement, &RFIconCornerGeometryHookOriginalIMP, '
+            'RFGeometryHookIDIconCornerRadii, RFGeometryReturnKindCornerRadiiIndex, '
+            '"{UIRectCornerRadii=dddd}24@0:8Q16" }',
+            '{ "SBFullScreenToHomeIconZoomSwitcherModifier", "layoutSettingsForTargetCenter:", '
+            '(IMP)RFIconLayoutGeometryHookReplacement, &RFIconLayoutGeometryHookOriginalIMP, '
+            'RFGeometryHookIDIconLayout, RFGeometryReturnKindObjectPoint, '
+            '"@32@0:8{CGPoint=dd}16" }',
+            '{ "SBFullScreenToHomeCenterZoomDownSwitcherModifier", "frameForIndex:", '
+            '(IMP)RFCenterFrameGeometryHookReplacement, &RFCenterFrameGeometryHookOriginalIMP, '
+            'RFGeometryHookIDCenterFrame, RFGeometryReturnKindCGRectIndex, '
+            '"{CGRect={CGPoint=dd}{CGSize=dd}}24@0:8Q16" }',
+            '{ "SBFullScreenToHomeSystemApertureSwitcherModifier", "frameForIndex:", '
+            '(IMP)RFSystemApertureFrameGeometryHookReplacement, &RFSystemApertureFrameGeometryHookOriginalIMP, '
+            'RFGeometryHookIDSystemApertureFrame, RFGeometryReturnKindCGRectIndex, '
+            '"{CGRect={CGPoint=dd}{CGSize=dd}}24@0:8Q16" }',
+        ):
+            self.assertIn(specification, source)
+
+        macro_fields = {
+            "RF_DEFINE_CGRECT_INDEX_GEOMETRY_HOOK": "RFGeometryFieldsForCGRect",
+            "RF_DEFINE_DOUBLE_INDEX_GEOMETRY_HOOK": "RFGeometryFieldsForDouble",
+            "RF_DEFINE_CORNER_RADII_INDEX_GEOMETRY_HOOK": "RFGeometryFieldsForCornerRadii",
+            "RF_DEFINE_OBJECT_POINT_GEOMETRY_HOOK": "RFGeometryFieldsForObjectPoint",
+        }
+        for macro_name, fields_builder in macro_fields.items():
+            start = source.index(f"#define {macro_name}")
+            next_define = source.find("\n#define ", start + 1)
+            macro = source[start:] if next_define < 0 else source[start:next_define]
+            self.assertEqual(macro.count("originalIMP)(object, selector"), 1, macro_name)
+            self.assertEqual(macro.count("if (RFShouldCaptureGeometryEvent(HOOK_ID))"), 1, macro_name)
+            self.assertEqual(macro.count(fields_builder), 1, macro_name)
+            self.assertLess(
+                macro.index("originalIMP)(object, selector"),
+                macro.index("if (RFShouldCaptureGeometryEvent(HOOK_ID))"),
+            )
+            self.assertLess(
+                macro.index("if (RFShouldCaptureGeometryEvent(HOOK_ID))"),
+                macro.index("RFSafelyRecordGeometryEvent"),
+            )
+            self.assertLess(macro.index("RFSafelyRecordGeometryEvent"), macro.index(fields_builder))
+            self.assertLess(macro.index(fields_builder), macro.index("return result"))
+
+        self.assertIn(
+            "typedef struct {\n"
+            "\tCGFloat topLeft;\n"
+            "\tCGFloat bottomLeft;\n"
+            "\tCGFloat bottomRight;\n"
+            "\tCGFloat topRight;\n"
+            "} RFDiagnosticCornerRadii;",
+            source,
+        )
+        self.assertIn("strcmp(rawEncoding, expectedEncoding) != 0", source)
+        self.assertNotIn("RFGeometryAdmissionLock", source)
+        reserve_start = source.index("static BOOL RFReserveGeometryEventSlot")
+        reserve_end = source.index("static UIWindowScene *RFMainWindowScene", reserve_start)
+        reserve = source[reserve_start:reserve_end]
+        self.assertLess(
+            reserve.index("RFGeometryEventsAdmitted[hookID] >= RFMaximumGeometryEventsPerHook"),
+            reserve.index("RFReserveEventSlot()"),
+        )
+        gate_start = source.index("static BOOL RFShouldCaptureGeometryEvent")
+        gate_end = source.index("static void RFEnqueueGeometryEvent", gate_start)
+        gate = source[gate_start:gate_end]
+        self.assertLess(gate.index("if (!NSThread.isMainThread)"), gate.index("RFReserveGeometryEventSlot"))
+        self.assertNotIn("class_getMethodImplementation", source)
+        self.assertNotIn("method_getImplementation", source)
 
     def test_inventory_and_lifecycle_scope_cover_both_target_systems(self) -> None:
         source = self.source()
@@ -290,6 +419,11 @@ class AppToHomeDiagnosticsContract(unittest.TestCase):
         self.assertIn("com.apple.springboard", workflow)
         self.assertIn("[RFAppToHomeDiag]", workflow)
         self.assertIn(DIAGNOSTICS_VERSION, workflow)
+        self.assertIn("grep -Fq 'frameForIndex:'", workflow)
+        self.assertIn("grep -Fq 'scaleForIndex:'", workflow)
+        self.assertIn("grep -Fq 'cornerRadiiForIndex:'", workflow)
+        self.assertIn("grep -Fq 'layoutSettingsForTargetCenter:'", workflow)
+        self.assertIn("grep -Fq 'geometryHooks'", workflow)
         self.assertIn("verify_macho_signature.py", workflow)
         self.assertIn("@loader_path/.jbroot/usr/lib/libsubstrate.dylib", workflow)
         self.assertIn("otool -L", workflow)

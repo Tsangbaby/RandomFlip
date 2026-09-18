@@ -1,7 +1,7 @@
 Package: com.tsangbaby.randomiconsflip
 Name: Random Icon Flip (App-to-Home Diagnostic)
 Depends: firmware (>= 15.0), mobilesubstrate
-Version: 0.0.9~diag3
+Version: 0.0.9~diag4
 Architecture: iphoneos-arm
 Description: Diagnostic build based on 0.0.8. Records bounded App-to-Home transition capability and lifecycle metadata without changing system animations.
 Maintainer: Tsangbaby

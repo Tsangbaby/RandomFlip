@@ -5,6 +5,7 @@
 #import <UIKit/UIAccessibility.h>
 #import <errno.h>
 #import <fcntl.h>
+#import <math.h>
 #import <objc/runtime.h>
 #import <os/lock.h>
 #import <stdio.h>
@@ -16,13 +17,14 @@
 #import <unistd.h>
 
 static NSString * const RFDiagnosticLogPrefix = @"[RFAppToHomeDiag]";
-static NSString * const RFDiagnosticPackageVersion = @"0.0.9~diag3";
+static NSString * const RFDiagnosticPackageVersion = @"0.0.9~diag4";
 static NSString * const RFDiagnosticBaselineVersion = @"0.0.8";
-static const char * const RFDiagnosticPackageVersionCString = "0.0.9~diag3";
+static const char * const RFDiagnosticPackageVersionCString = "0.0.9~diag4";
 static const char * const RFDiagnosticStatusPath = "/tmp/com.tsangbaby.randomiconsflip.transitiondiag.status.txt";
 static const char * const RFDiagnosticStatusDirectory = "/private/var/tmp";
 static const char * const RFDiagnosticStatusFilename = "com.tsangbaby.randomiconsflip.transitiondiag.status.txt";
 static const NSUInteger RFMaximumStoredEvents = 128;
+static const NSUInteger RFMaximumGeometryEventsPerHook = 8;
 static const NSUInteger RFMaximumSerializedBytes = 1024 * 1024;
 // Darwin protection class C == complete until first user authentication.
 static const int RFProtectionClassC = 3;
@@ -73,7 +75,35 @@ typedef NS_ENUM(NSUInteger, RFDiagnosticWriteResult) {
 typedef NS_ENUM(NSUInteger, RFHookReturnKind) {
 	RFHookReturnKindUnsupported = 0,
 	RFHookReturnKindVoid,
+	RFHookReturnKindBool,
 };
+
+typedef NS_ENUM(NSUInteger, RFGeometryHookID) {
+	RFGeometryHookIDIconFrame = 0,
+	RFGeometryHookIDIconScale,
+	RFGeometryHookIDIconCornerRadii,
+	RFGeometryHookIDIconLayout,
+	RFGeometryHookIDCenterFrame,
+	RFGeometryHookIDSystemApertureFrame,
+	RFGeometryHookIDCount,
+};
+
+typedef NS_ENUM(NSUInteger, RFGeometryReturnKind) {
+	RFGeometryReturnKindUnsupported = 0,
+	RFGeometryReturnKindCGRectIndex,
+	RFGeometryReturnKindDoubleIndex,
+	RFGeometryReturnKindCornerRadiiIndex,
+	RFGeometryReturnKindObjectPoint,
+};
+
+typedef struct {
+	CGFloat topLeft;
+	CGFloat bottomLeft;
+	CGFloat bottomRight;
+	CGFloat topRight;
+} RFDiagnosticCornerRadii;
+
+static NSUInteger RFGeometryEventsAdmitted[RFGeometryHookIDCount] = {0};
 
 static const char *RFSkipDiagnosticTypeQualifiers(const char *type) {
 	if (type == NULL) {
@@ -132,6 +162,19 @@ static BOOL RFReserveEventSlot(void) {
 	}
 	os_unfair_lock_unlock(&RFAdmissionLock);
 	return reserved;
+}
+
+static BOOL RFReserveGeometryEventSlot(RFGeometryHookID hookID) {
+	if (hookID >= RFGeometryHookIDCount ||
+		RFGeometryEventsAdmitted[hookID] >= RFMaximumGeometryEventsPerHook) {
+		return NO;
+	}
+	if (!RFReserveEventSlot()) {
+		return NO;
+	}
+	// Geometry admission is reached only after the main-thread gate below.
+	RFGeometryEventsAdmitted[hookID] += 1;
+	return YES;
 }
 
 static UIWindowScene *RFMainWindowScene(void) {
@@ -591,6 +634,219 @@ static void RFEnqueueEvent(NSDictionary *event) {
 	});
 }
 
+static NSString *RFGeometryHookName(RFGeometryHookID hookID) {
+	switch (hookID) {
+		case RFGeometryHookIDIconFrame: return @"icon.frame";
+		case RFGeometryHookIDIconScale: return @"icon.scale";
+		case RFGeometryHookIDIconCornerRadii: return @"icon.cornerRadii";
+		case RFGeometryHookIDIconLayout: return @"icon.layout";
+		case RFGeometryHookIDCenterFrame: return @"center.frame";
+		case RFGeometryHookIDSystemApertureFrame: return @"systemAperture.frame";
+		case RFGeometryHookIDCount: break;
+	}
+	return @"unknown";
+}
+
+static BOOL RFShouldCaptureGeometryEvent(RFGeometryHookID hookID) {
+	if (!NSThread.isMainThread) {
+		return NO;
+	}
+	return RFReserveGeometryEventSlot(hookID);
+}
+
+static void RFEnqueueGeometryEvent(
+	RFGeometryHookID hookID,
+	id object,
+	SEL selector,
+	NSDictionary *fields
+) {
+	NSMutableDictionary *event = [NSMutableDictionary dictionaryWithDictionary:@{
+		@"event": @"geometry",
+		@"geometryHook": RFGeometryHookName(hookID),
+		@"class": RFBoundedString(object != nil ? NSStringFromClass([object class]) : @"unknown", 160),
+		@"selector": RFBoundedString(selector != NULL ? NSStringFromSelector(selector) : @"unknown", 160),
+		@"captureThreadMain": @YES,
+	}];
+	if (fields != nil) {
+		[event addEntriesFromDictionary:fields];
+	}
+	RFEnqueueEvent(event);
+}
+
+static void RFSafelyRecordGeometryEvent(
+	RFGeometryHookID hookID,
+	id object,
+	SEL selector,
+	NSDictionary *fields
+) {
+	@try {
+		RFEnqueueGeometryEvent(hookID, object, selector, fields);
+	} @catch (__unused NSException *exception) {
+		// Geometry capture must never alter the system return value.
+	}
+}
+
+static NSDictionary *RFGeometryFieldsForCGRect(NSUInteger index, CGRect result) {
+	BOOL finite = isfinite(result.origin.x) && isfinite(result.origin.y) &&
+		isfinite(result.size.width) && isfinite(result.size.height);
+	NSMutableDictionary *fields = [@{
+		@"geometryIndex": @(index),
+		@"geometryValueFinite": @(finite),
+	} mutableCopy];
+	if (finite) {
+		fields[@"frameX"] = @(result.origin.x);
+		fields[@"frameY"] = @(result.origin.y);
+		fields[@"frameWidth"] = @(result.size.width);
+		fields[@"frameHeight"] = @(result.size.height);
+	}
+	return fields;
+}
+
+static NSDictionary *RFGeometryFieldsForDouble(NSUInteger index, double result) {
+	BOOL finite = isfinite(result);
+	NSMutableDictionary *fields = [@{
+		@"geometryIndex": @(index),
+		@"geometryValueFinite": @(finite),
+	} mutableCopy];
+	if (finite) {
+		fields[@"scale"] = @(result);
+	}
+	return fields;
+}
+
+static NSDictionary *RFGeometryFieldsForCornerRadii(NSUInteger index, RFDiagnosticCornerRadii result) {
+	BOOL finite = isfinite(result.topLeft) && isfinite(result.bottomLeft) &&
+		isfinite(result.bottomRight) && isfinite(result.topRight);
+	NSMutableDictionary *fields = [@{
+		@"geometryIndex": @(index),
+		@"geometryValueFinite": @(finite),
+	} mutableCopy];
+	if (finite) {
+		fields[@"cornerTopLeft"] = @(result.topLeft);
+		fields[@"cornerBottomLeft"] = @(result.bottomLeft);
+		fields[@"cornerBottomRight"] = @(result.bottomRight);
+		fields[@"cornerTopRight"] = @(result.topRight);
+	}
+	return fields;
+}
+
+static NSDictionary *RFGeometryFieldsForObjectPoint(CGPoint targetCenter, id result) {
+	BOOL finite = isfinite(targetCenter.x) && isfinite(targetCenter.y);
+	NSMutableDictionary *fields = [@{
+		@"geometryValueFinite": @(finite),
+		@"resultPresent": @(result != nil),
+	} mutableCopy];
+	if (finite) {
+		fields[@"targetCenterX"] = @(targetCenter.x);
+		fields[@"targetCenterY"] = @(targetCenter.y);
+	}
+	return fields;
+}
+
+#define RF_DEFINE_CGRECT_INDEX_GEOMETRY_HOOK(NAME, HOOK_ID, EVENT_NAME) \
+	static IMP NAME##OriginalIMP = NULL; \
+	static CGRect NAME##Replacement(id object, SEL selector, NSUInteger index) { \
+		IMP originalIMP = NAME##OriginalIMP; \
+		if (originalIMP == NULL) { \
+			return CGRectZero; \
+		} \
+		CGRect result = ((CGRect (*)(id, SEL, NSUInteger))originalIMP)(object, selector, index); \
+		@try { \
+			if (RFShouldCaptureGeometryEvent(HOOK_ID)) { \
+				RFSafelyRecordGeometryEvent(HOOK_ID, object, selector, RFGeometryFieldsForCGRect(index, result)); \
+			} \
+		} @catch (__unused NSException *exception) { \
+		} \
+		return result; \
+	}
+
+#define RF_DEFINE_DOUBLE_INDEX_GEOMETRY_HOOK(NAME, HOOK_ID, EVENT_NAME) \
+	static IMP NAME##OriginalIMP = NULL; \
+	static double NAME##Replacement(id object, SEL selector, NSUInteger index) { \
+		IMP originalIMP = NAME##OriginalIMP; \
+		if (originalIMP == NULL) { \
+			return 0.0; \
+		} \
+		double result = ((double (*)(id, SEL, NSUInteger))originalIMP)(object, selector, index); \
+		@try { \
+			if (RFShouldCaptureGeometryEvent(HOOK_ID)) { \
+				RFSafelyRecordGeometryEvent(HOOK_ID, object, selector, RFGeometryFieldsForDouble(index, result)); \
+			} \
+		} @catch (__unused NSException *exception) { \
+		} \
+		return result; \
+	}
+
+#define RF_DEFINE_CORNER_RADII_INDEX_GEOMETRY_HOOK(NAME, HOOK_ID, EVENT_NAME) \
+	static IMP NAME##OriginalIMP = NULL; \
+	static RFDiagnosticCornerRadii NAME##Replacement(id object, SEL selector, NSUInteger index) { \
+		IMP originalIMP = NAME##OriginalIMP; \
+		if (originalIMP == NULL) { \
+			return (RFDiagnosticCornerRadii){0, 0, 0, 0}; \
+		} \
+		RFDiagnosticCornerRadii result = ((RFDiagnosticCornerRadii (*)(id, SEL, NSUInteger))originalIMP)(object, selector, index); \
+		@try { \
+			if (RFShouldCaptureGeometryEvent(HOOK_ID)) { \
+				RFSafelyRecordGeometryEvent(HOOK_ID, object, selector, RFGeometryFieldsForCornerRadii(index, result)); \
+			} \
+		} @catch (__unused NSException *exception) { \
+		} \
+		return result; \
+	}
+
+#define RF_DEFINE_OBJECT_POINT_GEOMETRY_HOOK(NAME, HOOK_ID, EVENT_NAME) \
+	static IMP NAME##OriginalIMP = NULL; \
+	static id NAME##Replacement(id object, SEL selector, CGPoint targetCenter) { \
+		IMP originalIMP = NAME##OriginalIMP; \
+		if (originalIMP == NULL) { \
+			return nil; \
+		} \
+		id result = ((id (*)(id, SEL, CGPoint))originalIMP)(object, selector, targetCenter); \
+		@try { \
+			if (RFShouldCaptureGeometryEvent(HOOK_ID)) { \
+				RFSafelyRecordGeometryEvent(HOOK_ID, object, selector, RFGeometryFieldsForObjectPoint(targetCenter, result)); \
+			} \
+		} @catch (__unused NSException *exception) { \
+		} \
+		return result; \
+	}
+
+RF_DEFINE_CGRECT_INDEX_GEOMETRY_HOOK(
+	RFIconFrameGeometryHook,
+	RFGeometryHookIDIconFrame,
+	@"icon.frame"
+)
+RF_DEFINE_DOUBLE_INDEX_GEOMETRY_HOOK(
+	RFIconScaleGeometryHook,
+	RFGeometryHookIDIconScale,
+	@"icon.scale"
+)
+RF_DEFINE_CORNER_RADII_INDEX_GEOMETRY_HOOK(
+	RFIconCornerGeometryHook,
+	RFGeometryHookIDIconCornerRadii,
+	@"icon.cornerRadii"
+)
+RF_DEFINE_OBJECT_POINT_GEOMETRY_HOOK(
+	RFIconLayoutGeometryHook,
+	RFGeometryHookIDIconLayout,
+	@"icon.layout"
+)
+RF_DEFINE_CGRECT_INDEX_GEOMETRY_HOOK(
+	RFCenterFrameGeometryHook,
+	RFGeometryHookIDCenterFrame,
+	@"center.frame"
+)
+RF_DEFINE_CGRECT_INDEX_GEOMETRY_HOOK(
+	RFSystemApertureFrameGeometryHook,
+	RFGeometryHookIDSystemApertureFrame,
+	@"systemAperture.frame"
+)
+
+#undef RF_DEFINE_CGRECT_INDEX_GEOMETRY_HOOK
+#undef RF_DEFINE_DOUBLE_INDEX_GEOMETRY_HOOK
+#undef RF_DEFINE_CORNER_RADII_INDEX_GEOMETRY_HOOK
+#undef RF_DEFINE_OBJECT_POINT_GEOMETRY_HOOK
+
 static NSDictionary *RFBuildLifecycleEvent(id object, SEL selector, NSString *eventName) {
 	BOOL mainThread = NSThread.isMainThread;
 	NSMutableDictionary *event = [NSMutableDictionary dictionaryWithDictionary:@{
@@ -656,6 +912,24 @@ static void RFSafelyRecordLifecycleEvent(id object, SEL selector, NSString *even
 	}
 }
 
+static void RFSafelyRecordLifecycleBooleanEvent(
+	id object,
+	SEL selector,
+	NSString *eventName,
+	BOOL originalResult
+) {
+	if (!RFReserveEventSlot()) {
+		return;
+	}
+	@try {
+		NSMutableDictionary *event = [RFBuildLifecycleEvent(object, selector, eventName) mutableCopy];
+		event[@"originalBooleanResult"] = @(originalResult);
+		RFEnqueueEvent(event);
+	} @catch (__unused NSException *exception) {
+		// Diagnostic capture must never alter the original return value.
+	}
+}
+
 static RFHookReturnKind RFZeroArgumentReturnKind(Method method, NSString **encodingOut) {
 	const char *rawEncoding = method != NULL ? method_getTypeEncoding(method) : NULL;
 	if (encodingOut != NULL) {
@@ -678,11 +952,39 @@ static RFHookReturnKind RFZeroArgumentReturnKind(Method method, NSString **encod
 	}
 
 	const char *returnType = RFSkipDiagnosticTypeQualifiers(signature.methodReturnType);
-	if (returnType[0] == 'v') {
+	if (strcmp(returnType, @encode(void)) == 0) {
 		return RFHookReturnKindVoid;
+	}
+	if (strcmp(returnType, @encode(BOOL)) == 0) {
+		return RFHookReturnKindBool;
 	}
 	return RFHookReturnKindUnsupported;
 }
+
+static NSString *RFHookReturnKindName(RFHookReturnKind returnKind) {
+	switch (returnKind) {
+		case RFHookReturnKindVoid: return @"void";
+		case RFHookReturnKindBool: return @"bool";
+		case RFHookReturnKindUnsupported: return @"unsupported";
+	}
+	return @"unsupported";
+}
+
+#define RF_DEFINE_BOOL_LIFECYCLE_HOOK(NAME, EVENT_NAME) \
+	static IMP NAME##OriginalIMP = NULL; \
+	static BOOL NAME##Replacement(id object, SEL selector) { \
+		IMP originalIMP = NAME##OriginalIMP; \
+		if (originalIMP == NULL) { \
+			return NO; \
+		} \
+		BOOL result = ((BOOL (*)(id, SEL))originalIMP)(object, selector); \
+		RFSafelyRecordLifecycleBooleanEvent(object, selector, EVENT_NAME, result); \
+		return result; \
+	}
+
+RF_DEFINE_BOOL_LIFECYCLE_HOOK(RFTransactionBeginHook, @"transaction.begin")
+
+#undef RF_DEFINE_BOOL_LIFECYCLE_HOOK
 
 #define RF_DEFINE_VOID_LIFECYCLE_HOOK(NAME, EVENT_NAME) \
 	static IMP NAME##OriginalIMP = NULL; \
@@ -695,7 +997,6 @@ static RFHookReturnKind RFZeroArgumentReturnKind(Method method, NSString **encod
 		((void (*)(id, SEL))originalIMP)(object, selector); \
 	}
 
-RF_DEFINE_VOID_LIFECYCLE_HOOK(RFTransactionBeginHook, @"transaction.begin")
 RF_DEFINE_VOID_LIFECYCLE_HOOK(RFTransactionFinishHook, @"transaction.finish")
 RF_DEFINE_VOID_LIFECYCLE_HOOK(RFIconZoomBeginHook, @"modifier.begin")
 RF_DEFINE_VOID_LIFECYCLE_HOOK(RFIconZoomEndHook, @"modifier.end")
@@ -715,13 +1016,15 @@ typedef struct {
 	const char *selectorName;
 	IMP replacementIMP;
 	IMP *originalSlot;
+	RFHookReturnKind expectedReturnKind;
 } RFHookSpecification;
 
 static NSDictionary *RFInstallZeroArgumentLifecycleHook(
 	NSString *className,
 	NSString *selectorName,
 	IMP replacementIMP,
-	IMP *originalSlot
+	IMP *originalSlot,
+	RFHookReturnKind expectedReturnKind
 ) {
 	Class targetClass = NSClassFromString(className);
 	if (targetClass == Nil) {
@@ -736,7 +1039,7 @@ static NSDictionary *RFInstallZeroArgumentLifecycleHook(
 
 	NSString *encoding = nil;
 	RFHookReturnKind returnKind = RFZeroArgumentReturnKind(method, &encoding);
-	if (returnKind == RFHookReturnKindUnsupported) {
+	if (returnKind == RFHookReturnKindUnsupported || returnKind != expectedReturnKind) {
 		return @{
 			@"status": @"unsupportedSignature",
 			@"typeEncoding": encoding ?: @"<missing>",
@@ -757,8 +1060,112 @@ static NSDictionary *RFInstallZeroArgumentLifecycleHook(
 	return @{
 		@"status": predecessorReady ? @"installed" : @"predecessorUnavailable",
 		@"typeEncoding": encoding ?: @"<missing>",
-		@"returnKind": @"void",
+		@"returnKind": RFHookReturnKindName(returnKind),
 	};
+}
+
+static NSString *RFGeometryReturnKindName(RFGeometryReturnKind returnKind) {
+	switch (returnKind) {
+		case RFGeometryReturnKindCGRectIndex: return @"CGRect-index";
+		case RFGeometryReturnKindDoubleIndex: return @"double-index";
+		case RFGeometryReturnKindCornerRadiiIndex: return @"corner-radii-index";
+		case RFGeometryReturnKindObjectPoint: return @"object-point";
+		case RFGeometryReturnKindUnsupported: return @"unsupported";
+	}
+	return @"unsupported";
+}
+
+static NSDictionary *RFInstallGeometryHook(
+	RFGeometryHookID hookID,
+	NSString *className,
+	NSString *selectorName,
+	IMP replacementIMP,
+	IMP *originalSlot,
+	RFGeometryReturnKind expectedReturnKind,
+	const char *expectedEncoding
+) {
+	Class targetClass = NSClassFromString(className);
+	if (targetClass == Nil) {
+		return @{ @"status": @"missingClass" };
+	}
+
+	SEL selector = NSSelectorFromString(selectorName);
+	Method method = class_getInstanceMethod(targetClass, selector);
+	if (method == NULL) {
+		return @{ @"status": @"missingSelector" };
+	}
+
+	const char *rawEncoding = method_getTypeEncoding(method);
+	NSString *encoding = rawEncoding != NULL
+		? [NSString stringWithUTF8String:rawEncoding]
+		: @"<missing>";
+	if (rawEncoding == NULL || expectedEncoding == NULL || strcmp(rawEncoding, expectedEncoding) != 0) {
+		return @{
+			@"status": @"unsupportedSignature",
+			@"typeEncoding": RFBoundedString(encoding, 256),
+			@"returnKind": RFGeometryReturnKindName(expectedReturnKind),
+		};
+	}
+
+	if (replacementIMP == NULL || originalSlot == NULL || hookID >= RFGeometryHookIDCount) {
+		return @{
+			@"status": @"missingImplementation",
+			@"typeEncoding": RFBoundedString(encoding, 256),
+		};
+	}
+
+	*originalSlot = NULL;
+	MSHookMessageEx(targetClass, selector, replacementIMP, originalSlot);
+	BOOL predecessorReady = (*originalSlot != NULL);
+	return @{
+		@"status": predecessorReady ? @"installed" : @"predecessorUnavailable",
+		@"typeEncoding": RFBoundedString(encoding, 256),
+		@"returnKind": RFGeometryReturnKindName(expectedReturnKind),
+	};
+}
+
+typedef struct {
+	const char *className;
+	const char *selectorName;
+	IMP replacementIMP;
+	IMP *originalSlot;
+	RFGeometryHookID hookID;
+	RFGeometryReturnKind expectedReturnKind;
+	const char *expectedEncoding;
+} RFGeometryHookSpecification;
+
+static const RFGeometryHookSpecification RFGeometryHookSpecifications[] = {
+	{ "SBFullScreenToHomeIconZoomSwitcherModifier", "frameForIndex:", (IMP)RFIconFrameGeometryHookReplacement, &RFIconFrameGeometryHookOriginalIMP, RFGeometryHookIDIconFrame, RFGeometryReturnKindCGRectIndex, "{CGRect={CGPoint=dd}{CGSize=dd}}24@0:8Q16" },
+	{ "SBFullScreenToHomeIconZoomSwitcherModifier", "scaleForIndex:", (IMP)RFIconScaleGeometryHookReplacement, &RFIconScaleGeometryHookOriginalIMP, RFGeometryHookIDIconScale, RFGeometryReturnKindDoubleIndex, "d24@0:8Q16" },
+	{ "SBFullScreenToHomeIconZoomSwitcherModifier", "cornerRadiiForIndex:", (IMP)RFIconCornerGeometryHookReplacement, &RFIconCornerGeometryHookOriginalIMP, RFGeometryHookIDIconCornerRadii, RFGeometryReturnKindCornerRadiiIndex, "{UIRectCornerRadii=dddd}24@0:8Q16" },
+	{ "SBFullScreenToHomeIconZoomSwitcherModifier", "layoutSettingsForTargetCenter:", (IMP)RFIconLayoutGeometryHookReplacement, &RFIconLayoutGeometryHookOriginalIMP, RFGeometryHookIDIconLayout, RFGeometryReturnKindObjectPoint, "@32@0:8{CGPoint=dd}16" },
+	{ "SBFullScreenToHomeCenterZoomDownSwitcherModifier", "frameForIndex:", (IMP)RFCenterFrameGeometryHookReplacement, &RFCenterFrameGeometryHookOriginalIMP, RFGeometryHookIDCenterFrame, RFGeometryReturnKindCGRectIndex, "{CGRect={CGPoint=dd}{CGSize=dd}}24@0:8Q16" },
+	{ "SBFullScreenToHomeSystemApertureSwitcherModifier", "frameForIndex:", (IMP)RFSystemApertureFrameGeometryHookReplacement, &RFSystemApertureFrameGeometryHookOriginalIMP, RFGeometryHookIDSystemApertureFrame, RFGeometryReturnKindCGRectIndex, "{CGRect={CGPoint=dd}{CGSize=dd}}24@0:8Q16" },
+};
+
+static NSDictionary *RFInstallGeometryHooks(void) {
+	NSMutableDictionary *statuses = [NSMutableDictionary dictionary];
+	NSUInteger hookCount = sizeof(RFGeometryHookSpecifications) / sizeof(RFGeometryHookSpecifications[0]);
+	for (NSUInteger index = 0; index < hookCount; index++) {
+		const RFGeometryHookSpecification *specification = &RFGeometryHookSpecifications[index];
+		NSString *className = [NSString stringWithUTF8String:specification->className];
+		NSString *selectorName = [NSString stringWithUTF8String:specification->selectorName];
+		NSString *key = [NSString stringWithFormat:@"%@.%@", className, selectorName];
+		@try {
+			statuses[key] = RFInstallGeometryHook(
+				specification->hookID,
+				className,
+				selectorName,
+				specification->replacementIMP,
+				specification->originalSlot,
+				specification->expectedReturnKind,
+				specification->expectedEncoding
+			);
+		} @catch (__unused NSException *exception) {
+			statuses[key] = @{ @"status": @"installationException" };
+		}
+	}
+	return statuses;
 }
 
 static NSArray<NSDictionary *> *RFClassInventorySpecifications(void) {
@@ -831,18 +1238,18 @@ static NSDictionary *RFBuildClassInventory(void) {
 }
 
 static const RFHookSpecification RFHookSpecifications[] = {
-	{ "SBToAppsWorkspaceTransaction", "_beginAnimation", (IMP)RFTransactionBeginHookReplacement, &RFTransactionBeginHookOriginalIMP },
-	{ "SBToAppsWorkspaceTransaction", "_animationDidFinish", (IMP)RFTransactionFinishHookReplacement, &RFTransactionFinishHookOriginalIMP },
-	{ "SBFullScreenToHomeIconZoomSwitcherModifier", "transitionWillBegin", (IMP)RFIconZoomBeginHookReplacement, &RFIconZoomBeginHookOriginalIMP },
-	{ "SBFullScreenToHomeIconZoomSwitcherModifier", "transitionDidEnd", (IMP)RFIconZoomEndHookReplacement, &RFIconZoomEndHookOriginalIMP },
-	{ "SBFullScreenToHomeCenterZoomDownSwitcherModifier", "transitionWillBegin", (IMP)RFCenterZoomBeginHookReplacement, &RFCenterZoomBeginHookOriginalIMP },
-	{ "SBFullScreenToHomeCenterZoomDownSwitcherModifier", "transitionDidEnd", (IMP)RFCenterZoomEndHookReplacement, &RFCenterZoomEndHookOriginalIMP },
-	{ "SBHomeGestureToHomeSwitcherModifier", "transitionWillBegin", (IMP)RFHomeGestureBeginHookReplacement, &RFHomeGestureBeginHookOriginalIMP },
-	{ "SBHomeGestureToHomeSwitcherModifier", "transitionDidEnd", (IMP)RFHomeGestureEndHookReplacement, &RFHomeGestureEndHookOriginalIMP },
-	{ "SBHomeGestureFinalDestinationSwitcherModifier", "transitionWillBegin", (IMP)RFFinalDestinationBeginHookReplacement, &RFFinalDestinationBeginHookOriginalIMP },
-	{ "SBHomeGestureFinalDestinationSwitcherModifier", "transitionDidEnd", (IMP)RFFinalDestinationEndHookReplacement, &RFFinalDestinationEndHookOriginalIMP },
-	{ "SBFullScreenToHomeSystemApertureSwitcherModifier", "transitionWillBegin", (IMP)RFSystemApertureBeginHookReplacement, &RFSystemApertureBeginHookOriginalIMP },
-	{ "SBFullScreenToHomeSystemApertureSwitcherModifier", "transitionDidEnd", (IMP)RFSystemApertureEndHookReplacement, &RFSystemApertureEndHookOriginalIMP },
+	{ "SBToAppsWorkspaceTransaction", "_beginAnimation", (IMP)RFTransactionBeginHookReplacement, &RFTransactionBeginHookOriginalIMP, RFHookReturnKindBool },
+	{ "SBToAppsWorkspaceTransaction", "_animationDidFinish", (IMP)RFTransactionFinishHookReplacement, &RFTransactionFinishHookOriginalIMP, RFHookReturnKindVoid },
+	{ "SBFullScreenToHomeIconZoomSwitcherModifier", "transitionWillBegin", (IMP)RFIconZoomBeginHookReplacement, &RFIconZoomBeginHookOriginalIMP, RFHookReturnKindVoid },
+	{ "SBFullScreenToHomeIconZoomSwitcherModifier", "transitionDidEnd", (IMP)RFIconZoomEndHookReplacement, &RFIconZoomEndHookOriginalIMP, RFHookReturnKindVoid },
+	{ "SBFullScreenToHomeCenterZoomDownSwitcherModifier", "transitionWillBegin", (IMP)RFCenterZoomBeginHookReplacement, &RFCenterZoomBeginHookOriginalIMP, RFHookReturnKindVoid },
+	{ "SBFullScreenToHomeCenterZoomDownSwitcherModifier", "transitionDidEnd", (IMP)RFCenterZoomEndHookReplacement, &RFCenterZoomEndHookOriginalIMP, RFHookReturnKindVoid },
+	{ "SBHomeGestureToHomeSwitcherModifier", "transitionWillBegin", (IMP)RFHomeGestureBeginHookReplacement, &RFHomeGestureBeginHookOriginalIMP, RFHookReturnKindVoid },
+	{ "SBHomeGestureToHomeSwitcherModifier", "transitionDidEnd", (IMP)RFHomeGestureEndHookReplacement, &RFHomeGestureEndHookOriginalIMP, RFHookReturnKindVoid },
+	{ "SBHomeGestureFinalDestinationSwitcherModifier", "transitionWillBegin", (IMP)RFFinalDestinationBeginHookReplacement, &RFFinalDestinationBeginHookOriginalIMP, RFHookReturnKindVoid },
+	{ "SBHomeGestureFinalDestinationSwitcherModifier", "transitionDidEnd", (IMP)RFFinalDestinationEndHookReplacement, &RFFinalDestinationEndHookOriginalIMP, RFHookReturnKindVoid },
+	{ "SBFullScreenToHomeSystemApertureSwitcherModifier", "transitionWillBegin", (IMP)RFSystemApertureBeginHookReplacement, &RFSystemApertureBeginHookOriginalIMP, RFHookReturnKindVoid },
+	{ "SBFullScreenToHomeSystemApertureSwitcherModifier", "transitionDidEnd", (IMP)RFSystemApertureEndHookReplacement, &RFSystemApertureEndHookOriginalIMP, RFHookReturnKindVoid },
 };
 
 static NSDictionary *RFInstallLifecycleHooks(void) {
@@ -858,7 +1265,8 @@ static NSDictionary *RFInstallLifecycleHooks(void) {
 				className,
 				selectorName,
 				specification->replacementIMP,
-				specification->originalSlot
+				 specification->originalSlot,
+				 specification->expectedReturnKind
 			);
 		} @catch (__unused NSException *exception) {
 			statuses[key] = @{ @"status": @"installationException" };
@@ -876,8 +1284,10 @@ static NSDictionary *RFInitialDiagnosticState(NSDictionary *inventory) {
 		@"osVersion": RFBoundedString(UIDevice.currentDevice.systemVersion, 64),
 		@"osBuild": RFOSBuild(),
 		@"maximumStoredEvents": @(RFMaximumStoredEvents),
+		@"maximumGeometryEventsPerHook": @(RFMaximumGeometryEventsPerHook),
 		@"inventory": inventory ?: @{},
 		@"hooks": @{},
+		@"geometryHooks": @{},
 		@"events": @[],
 		@"counters": @{},
 		@"privacy": @{
@@ -927,11 +1337,13 @@ void RFTransitionDiagnosticsStart(void) {
 		});
 
 		NSDictionary *hookStatuses = RFInstallLifecycleHooks();
+		NSDictionary *geometryHookStatuses = RFInstallGeometryHooks();
 		RFEnqueueDiagnosticStatus(RFDiagnosticStageHooksReady);
 		dispatch_async(RFDiagnosticWriterQueue, ^{
 			@autoreleasepool {
 				@try {
 					RFDiagnosticState[@"hooks"] = hookStatuses;
+					RFDiagnosticState[@"geometryHooks"] = geometryHookStatuses;
 					RFWriteStateLocked();
 				} @catch (__unused NSException *exception) {
 					RFEnqueueDiagnosticStatus(RFDiagnosticStageWriterException);

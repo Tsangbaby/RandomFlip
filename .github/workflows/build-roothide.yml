@@ -22,7 +22,7 @@ env:
   SDK_RELEASE_COMMIT_SHA: 146e41ff2c292168388929e43c9b4de2f00e36b3
   SDK_NAME: iPhoneOS16.5.sdk
   SDK_ARCHIVE_SHA256: 5e0fd3f01266cce4ce012d4a99b38eb56578fca40d09edc81cd83dee958202fb
-  PACKAGE_VERSION: "0.0.9~diag3"
+  PACKAGE_VERSION: "0.0.9~diag4"
 
 jobs:
   build-roothide:
@@ -181,8 +181,13 @@ jobs:
           diagnostic_dylib="$extract_dir/Library/MobileSubstrate/DynamicLibraries/RandomIconsFlip.dylib"
           strings "$diagnostic_dylib" > "$RUNNER_TEMP/randomflip-dylib-strings.txt"
           grep -Fq '[RFAppToHomeDiag]' "$RUNNER_TEMP/randomflip-dylib-strings.txt"
-          grep -Fq '0.0.9~diag3' "$RUNNER_TEMP/randomflip-dylib-strings.txt"
+          grep -Fq '0.0.9~diag4' "$RUNNER_TEMP/randomflip-dylib-strings.txt"
           grep -Fq '0.0.8' "$RUNNER_TEMP/randomflip-dylib-strings.txt"
+          grep -Fq 'frameForIndex:' "$RUNNER_TEMP/randomflip-dylib-strings.txt"
+          grep -Fq 'scaleForIndex:' "$RUNNER_TEMP/randomflip-dylib-strings.txt"
+          grep -Fq 'cornerRadiiForIndex:' "$RUNNER_TEMP/randomflip-dylib-strings.txt"
+          grep -Fq 'layoutSettingsForTargetCenter:' "$RUNNER_TEMP/randomflip-dylib-strings.txt"
+          grep -Fq 'geometryHooks' "$RUNNER_TEMP/randomflip-dylib-strings.txt"
 
           otool -L "$diagnostic_dylib" > "$artifact_dir/MACHO_DEPENDENCIES.txt"
           grep -Fq '@loader_path/.jbroot/usr/lib/libsubstrate.dylib' "$artifact_dir/MACHO_DEPENDENCIES.txt"
