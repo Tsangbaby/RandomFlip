@@ -14,6 +14,7 @@ public final class RandomFlipManager: NSObject {
         case jelly
         case orbitSpiral
         case flutterLeaf
+        case infinityDrift
     }
 
     private static let singleton = RandomFlipManager(environment: SpringBoardEnvironment())
@@ -29,7 +30,8 @@ public final class RandomFlipManager: NSObject {
         .jumpLanding, .jumpLanding,
         .jelly, .jelly,
         .orbitSpiral, .orbitSpiral,
-        .flutterLeaf, .flutterLeaf
+        .flutterLeaf, .flutterLeaf,
+        .infinityDrift, .infinityDrift
     ]
 
     private let environment: SpringBoardEnvironment
@@ -183,6 +185,8 @@ public final class RandomFlipManager: NSObject {
             animateOrbitSpiral(on: view, duration: duration, completion: completion)
         case .flutterLeaf:
             animateFlutterLeaf(on: view, duration: duration, completion: completion)
+        case .infinityDrift:
+            animateInfinityDrift(on: view, duration: duration, completion: completion)
         }
     }
 
@@ -529,6 +533,61 @@ public final class RandomFlipManager: NSObject {
                 view.transform = baseTransform
             }
         } completion: { finished in
+            completion(finished)
+        }
+    }
+
+    private func animateInfinityDrift(
+        on view: UIView,
+        duration: TimeInterval,
+        completion: @escaping (Bool) -> Void
+    ) {
+        let baseTransform = view.transform
+        let infinityOffsetX: CGFloat = 14.0
+        let infinityOffsetY: CGFloat = 8.0
+        let options: UIView.KeyframeAnimationOptions = [
+            .calculationModeCubic,
+            .beginFromCurrentState,
+            .allowUserInteraction
+        ]
+
+        UIView.animateKeyframes(
+            withDuration: min(duration, 0.95),
+            delay: 0,
+            options: options
+        ) {
+            UIView.addKeyframe(withRelativeStartTime: 0.000, relativeDuration: 0.125) {
+                view.transform = baseTransform
+                    .translatedBy(x: infinityOffsetX * 0.72, y: -infinityOffsetY)
+            }
+            UIView.addKeyframe(withRelativeStartTime: 0.125, relativeDuration: 0.125) {
+                view.transform = baseTransform
+                    .translatedBy(x: infinityOffsetX, y: 0)
+            }
+            UIView.addKeyframe(withRelativeStartTime: 0.250, relativeDuration: 0.125) {
+                view.transform = baseTransform
+                    .translatedBy(x: infinityOffsetX * 0.72, y: infinityOffsetY)
+            }
+            UIView.addKeyframe(withRelativeStartTime: 0.375, relativeDuration: 0.125) {
+                view.transform = baseTransform
+            }
+            UIView.addKeyframe(withRelativeStartTime: 0.500, relativeDuration: 0.125) {
+                view.transform = baseTransform
+                    .translatedBy(x: -infinityOffsetX * 0.72, y: -infinityOffsetY)
+            }
+            UIView.addKeyframe(withRelativeStartTime: 0.625, relativeDuration: 0.125) {
+                view.transform = baseTransform
+                    .translatedBy(x: -infinityOffsetX, y: 0)
+            }
+            UIView.addKeyframe(withRelativeStartTime: 0.750, relativeDuration: 0.125) {
+                view.transform = baseTransform
+                    .translatedBy(x: -infinityOffsetX * 0.72, y: infinityOffsetY)
+            }
+            UIView.addKeyframe(withRelativeStartTime: 0.875, relativeDuration: 0.125) {
+                view.transform = baseTransform
+            }
+        } completion: { finished in
+            view.transform = baseTransform
             completion(finished)
         }
     }
