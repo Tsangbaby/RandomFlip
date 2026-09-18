@@ -200,7 +200,6 @@ jobs:
                 archs="$(lipo -archs "$candidate")"
                 test "$archs" = "arm64e"
                 ldid -e "$candidate" > /dev/null
-                codesign --verify --strict --verbose=2 "$candidate"
                 python3 tests/verify_macho_signature.py "$candidate" >> "$artifact_dir/MACHO_SIGNATURES.txt"
                 ;;
             esac

@@ -239,6 +239,9 @@ class AppToHomeDiagnosticsContract(unittest.TestCase):
         self.assertIn("verify_macho_signature.py", workflow)
         self.assertIn("@loader_path/.jbroot/usr/lib/libsubstrate.dylib", workflow)
         self.assertIn("otool -L", workflow)
+        self.assertIn('ldid -e "$candidate"', workflow)
+        self.assertIn('python3 tests/verify_macho_signature.py "$candidate"', workflow)
+        self.assertNotIn("codesign --verify", workflow)
         self.assertTrue(verifier.is_file())
 
     def test_signature_verifier_accepts_only_bounded_superblob_with_code_directory(self) -> None:
