@@ -16,20 +16,59 @@
 #import <unistd.h>
 
 static NSString * const RFDiagnosticLogPrefix = @"[RFAppToHomeDiag]";
-static NSString * const RFDiagnosticFilename = @"com.tsangbaby.randomiconsflip.transitiondiag.plist";
-static NSString * const RFDiagnosticPackageVersion = @"0.0.9~diag1";
+static NSString * const RFDiagnosticPackageVersion = @"0.0.9~diag2";
 static NSString * const RFDiagnosticBaselineVersion = @"0.0.8";
+static const char * const RFDiagnosticPackageVersionCString = "0.0.9~diag2";
+static const char * const RFDiagnosticStatusPath = "/tmp/com.tsangbaby.randomiconsflip.transitiondiag.status.txt";
+static const char * const RFDiagnosticStatusDirectory = "/private/var/tmp";
+static const char * const RFDiagnosticStatusFilename = "com.tsangbaby.randomiconsflip.transitiondiag.status.txt";
 static const NSUInteger RFMaximumStoredEvents = 128;
 static const NSUInteger RFMaximumSerializedBytes = 1024 * 1024;
 // Darwin protection class C == complete until first user authentication.
 static const int RFProtectionClassC = 3;
 
 static dispatch_queue_t RFDiagnosticWriterQueue;
+static dispatch_queue_t RFDiagnosticStatusQueue;
 static NSMutableDictionary *RFDiagnosticState;
 static os_unfair_lock RFAdmissionLock = OS_UNFAIR_LOCK_INIT;
 static BOOL RFDiagnosticsStarted = NO;
 static NSUInteger RFEventSequence = 0;
 static NSUInteger RFEventsAdmitted = 0;
+
+typedef NS_ENUM(NSUInteger, RFDiagnosticStage) {
+	RFDiagnosticStageEntry = 0,
+	RFDiagnosticStageOffMain,
+	RFDiagnosticStageQueueReady,
+	RFDiagnosticStageInventoryReady,
+	RFDiagnosticStageHooksReady,
+	RFDiagnosticStageStateUnavailable,
+	RFDiagnosticStageSerializationFailed,
+	RFDiagnosticStagePlistWriteOK,
+	RFDiagnosticStagePlistInvalidData,
+	RFDiagnosticStagePlistDirectoryPreparationFailed,
+	RFDiagnosticStagePlistInvalidPath,
+	RFDiagnosticStagePlistDirectoryValidationFailed,
+	RFDiagnosticStagePlistFileOpenFailed,
+	RFDiagnosticStagePlistFileValidationFailed,
+	RFDiagnosticStagePlistProtectionFailed,
+	RFDiagnosticStagePlistDataWriteFailed,
+	RFDiagnosticStagePlistFinalValidationFailed,
+	RFDiagnosticStageWriterException,
+	RFDiagnosticStageStartupException,
+};
+
+typedef NS_ENUM(NSUInteger, RFDiagnosticWriteResult) {
+	RFDiagnosticWriteResultSuccess = 0,
+	RFDiagnosticWriteResultInvalidData,
+	RFDiagnosticWriteResultDirectoryPreparationFailed,
+	RFDiagnosticWriteResultInvalidPath,
+	RFDiagnosticWriteResultDirectoryValidationFailed,
+	RFDiagnosticWriteResultFileOpenFailed,
+	RFDiagnosticWriteResultFileValidationFailed,
+	RFDiagnosticWriteResultProtectionFailed,
+	RFDiagnosticWriteResultDataWriteFailed,
+	RFDiagnosticWriteResultFinalValidationFailed,
+};
 
 typedef NS_ENUM(NSUInteger, RFHookReturnKind) {
 	RFHookReturnKindUnsupported = 0,
@@ -57,11 +96,7 @@ static NSString *RFBoundedString(NSString *value, NSUInteger maximumLength) {
 }
 
 NSString *RFTransitionDiagnosticsOutputPath(void) {
-	NSString *library = NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSUserDomainMask, YES).firstObject;
-	if (library.length == 0) {
-		library = @"/var/mobile/Library";
-	}
-	return [[library stringByAppendingPathComponent:@"Preferences"] stringByAppendingPathComponent:RFDiagnosticFilename];
+	return @"/var/mobile/Library/Preferences/com.tsangbaby.randomiconsflip.transitiondiag.plist";
 }
 
 static NSString *RFOSBuild(void) {
@@ -218,23 +253,58 @@ static BOOL RFSameInode(struct stat left, struct stat right) {
 	return left.st_dev == right.st_dev && left.st_ino == right.st_ino;
 }
 
-static BOOL RFSecurelyWriteData(NSData *data) {
-	NSUInteger dataLength = data.length;
-	const uint8_t *bytes = data.bytes;
-	if (dataLength == 0 || dataLength > RFMaximumSerializedBytes || bytes == NULL) {
-		return NO;
+static const char *RFDiagnosticStageName(RFDiagnosticStage stage) {
+	switch (stage) {
+		case RFDiagnosticStageEntry: return "entry";
+		case RFDiagnosticStageOffMain: return "off-main";
+		case RFDiagnosticStageQueueReady: return "queue-ready";
+		case RFDiagnosticStageInventoryReady: return "inventory-ready";
+		case RFDiagnosticStageHooksReady: return "hooks-ready";
+		case RFDiagnosticStageStateUnavailable: return "state-unavailable";
+		case RFDiagnosticStageSerializationFailed: return "serialization-failed";
+		case RFDiagnosticStagePlistWriteOK: return "plist-write-ok";
+		case RFDiagnosticStagePlistInvalidData: return "plist-invalid-data";
+		case RFDiagnosticStagePlistDirectoryPreparationFailed: return "plist-directory-prepare-failed";
+		case RFDiagnosticStagePlistInvalidPath: return "plist-invalid-path";
+		case RFDiagnosticStagePlistDirectoryValidationFailed: return "plist-directory-validation-failed";
+		case RFDiagnosticStagePlistFileOpenFailed: return "plist-file-open-failed";
+		case RFDiagnosticStagePlistFileValidationFailed: return "plist-file-validation-failed";
+		case RFDiagnosticStagePlistProtectionFailed: return "plist-protection-failed";
+		case RFDiagnosticStagePlistDataWriteFailed: return "plist-data-write-failed";
+		case RFDiagnosticStagePlistFinalValidationFailed: return "plist-final-validation-failed";
+		case RFDiagnosticStageWriterException: return "writer-exception";
+		case RFDiagnosticStageStartupException: return "startup-exception";
 	}
+	return "invalid-stage";
+}
 
-	NSString *outputPath = RFTransitionDiagnosticsOutputPath();
-	NSString *directory = outputPath.stringByDeletingLastPathComponent;
-	if (!RFPrepareOutputDirectory(directory)) {
-		return NO;
+static RFDiagnosticStage RFDiagnosticStageForWriteResult(RFDiagnosticWriteResult result) {
+	switch (result) {
+		case RFDiagnosticWriteResultSuccess: return RFDiagnosticStagePlistWriteOK;
+		case RFDiagnosticWriteResultInvalidData: return RFDiagnosticStagePlistInvalidData;
+		case RFDiagnosticWriteResultDirectoryPreparationFailed: return RFDiagnosticStagePlistDirectoryPreparationFailed;
+		case RFDiagnosticWriteResultInvalidPath: return RFDiagnosticStagePlistInvalidPath;
+		case RFDiagnosticWriteResultDirectoryValidationFailed: return RFDiagnosticStagePlistDirectoryValidationFailed;
+		case RFDiagnosticWriteResultFileOpenFailed: return RFDiagnosticStagePlistFileOpenFailed;
+		case RFDiagnosticWriteResultFileValidationFailed: return RFDiagnosticStagePlistFileValidationFailed;
+		case RFDiagnosticWriteResultProtectionFailed: return RFDiagnosticStagePlistProtectionFailed;
+		case RFDiagnosticWriteResultDataWriteFailed: return RFDiagnosticStagePlistDataWriteFailed;
+		case RFDiagnosticWriteResultFinalValidationFailed: return RFDiagnosticStagePlistFinalValidationFailed;
 	}
+	return RFDiagnosticStagePlistFinalValidationFailed;
+}
 
-	NSString *outputName = outputPath.lastPathComponent;
-	const char *directoryPath = directory.fileSystemRepresentation;
-	const char *outputFileName = outputName.fileSystemRepresentation;
-	if (directoryPath == NULL || outputFileName == NULL) {
+static BOOL RFWriteDiagnosticStatus(RFDiagnosticStage stage) {
+	const char *stageName = RFDiagnosticStageName(stage);
+	char payload[192] = {0};
+	int payloadLength = snprintf(
+		payload,
+		sizeof(payload),
+		"schema=1\nversion=%s\nstage=%s\n",
+		RFDiagnosticPackageVersionCString,
+		stageName
+	);
+	if (payloadLength <= 0 || (size_t)payloadLength >= sizeof(payload)) {
 		return NO;
 	}
 
@@ -248,6 +318,130 @@ static BOOL RFSecurelyWriteData(NSData *data) {
 	struct stat openedStatus = {0};
 	struct stat finalEntryStatus = {0};
 
+	directoryDescriptor = open(
+		RFDiagnosticStatusDirectory,
+		O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK
+	);
+	if (directoryDescriptor < 0 ||
+		fstat(directoryDescriptor, &directoryStatus) != 0 ||
+		!S_ISDIR(directoryStatus.st_mode)) {
+		goto cleanup;
+	}
+	BOOL rootOwnedStickyDirectory = directoryStatus.st_uid == 0 &&
+		(directoryStatus.st_mode & S_ISVTX) != 0;
+	BOOL privateUserDirectory = directoryStatus.st_uid == geteuid() &&
+		(directoryStatus.st_mode & (S_IWGRP | S_IWOTH)) == 0;
+	if (!rootOwnedStickyDirectory && !privateUserDirectory) {
+		goto cleanup;
+	}
+
+	fileDescriptor = openat(
+		directoryDescriptor,
+		RFDiagnosticStatusFilename,
+		O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK,
+		S_IRUSR | S_IWUSR
+	);
+	if (fileDescriptor >= 0) {
+		outputCreated = YES;
+	} else if (errno == EEXIST) {
+		fileDescriptor = openat(
+			directoryDescriptor,
+			RFDiagnosticStatusFilename,
+			O_WRONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK
+		);
+	}
+	if (fileDescriptor < 0 || fstat(fileDescriptor, &openedStatus) != 0) {
+		goto cleanup;
+	}
+	openedStatusValid = YES;
+
+	if (!S_ISREG(openedStatus.st_mode) ||
+		openedStatus.st_uid != geteuid() ||
+		openedStatus.st_nlink != 1 ||
+		fchmod(fileDescriptor, S_IRUSR | S_IWUSR) != 0) {
+		goto cleanup;
+	}
+	outputValidated = YES;
+
+	if (ftruncate(fileDescriptor, 0) != 0 ||
+		!RFWriteAllBytes(fileDescriptor, (const uint8_t *)payload, (NSUInteger)payloadLength)) {
+		goto cleanup;
+	}
+
+	if (fstat(fileDescriptor, &openedStatus) != 0 ||
+		!S_ISREG(openedStatus.st_mode) ||
+		openedStatus.st_uid != geteuid() ||
+		openedStatus.st_nlink != 1 ||
+		(openedStatus.st_mode & 0777) != 0600 ||
+		fstatat(directoryDescriptor, RFDiagnosticStatusFilename, &finalEntryStatus, AT_SYMLINK_NOFOLLOW) != 0 ||
+		!S_ISREG(finalEntryStatus.st_mode) ||
+		finalEntryStatus.st_uid != geteuid() ||
+		finalEntryStatus.st_nlink != 1 ||
+		!RFSameInode(openedStatus, finalEntryStatus)) {
+		goto cleanup;
+	}
+
+	success = YES;
+
+cleanup:
+	if (!success && directoryDescriptor >= 0 && openedStatusValid && (outputCreated || outputValidated)) {
+		struct stat cleanupStatus = {0};
+		if (fstatat(directoryDescriptor, RFDiagnosticStatusFilename, &cleanupStatus, AT_SYMLINK_NOFOLLOW) == 0 &&
+			RFSameInode(openedStatus, cleanupStatus)) {
+			unlinkat(directoryDescriptor, RFDiagnosticStatusFilename, 0);
+		}
+	}
+	if (fileDescriptor >= 0) {
+		close(fileDescriptor);
+	}
+	if (directoryDescriptor >= 0) {
+		close(directoryDescriptor);
+	}
+	return success;
+}
+
+static void RFEnqueueDiagnosticStatus(RFDiagnosticStage stage) {
+	dispatch_queue_t statusQueue = RFDiagnosticStatusQueue;
+	if (statusQueue == nil) {
+		return;
+	}
+	dispatch_async(RFDiagnosticStatusQueue, ^{
+		@autoreleasepool {
+			RFWriteDiagnosticStatus(stage);
+		}
+	});
+}
+
+static RFDiagnosticWriteResult RFSecurelyWriteData(NSData *data) {
+	NSUInteger dataLength = data.length;
+	const uint8_t *bytes = data.bytes;
+	if (dataLength == 0 || dataLength > RFMaximumSerializedBytes || bytes == NULL) {
+		return RFDiagnosticWriteResultInvalidData;
+	}
+
+	NSString *outputPath = RFTransitionDiagnosticsOutputPath();
+	NSString *directory = outputPath.stringByDeletingLastPathComponent;
+	if (!RFPrepareOutputDirectory(directory)) {
+		return RFDiagnosticWriteResultDirectoryPreparationFailed;
+	}
+
+	NSString *outputName = outputPath.lastPathComponent;
+	const char *directoryPath = directory.fileSystemRepresentation;
+	const char *outputFileName = outputName.fileSystemRepresentation;
+	if (directoryPath == NULL || outputFileName == NULL) {
+		return RFDiagnosticWriteResultInvalidPath;
+	}
+
+	int directoryDescriptor = -1;
+	int fileDescriptor = -1;
+	BOOL outputCreated = NO;
+	BOOL openedStatusValid = NO;
+	BOOL outputValidated = NO;
+	RFDiagnosticWriteResult result = RFDiagnosticWriteResultDirectoryValidationFailed;
+	struct stat directoryStatus = {0};
+	struct stat openedStatus = {0};
+	struct stat finalEntryStatus = {0};
+
 	directoryDescriptor = open(directoryPath, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
 	if (directoryDescriptor < 0 ||
 		fstat(directoryDescriptor, &directoryStatus) != 0 ||
@@ -257,6 +451,7 @@ static BOOL RFSecurelyWriteData(NSData *data) {
 		goto cleanup;
 	}
 
+	result = RFDiagnosticWriteResultFileOpenFailed;
 	fileDescriptor = openat(
 		directoryDescriptor,
 		outputFileName,
@@ -277,22 +472,29 @@ static BOOL RFSecurelyWriteData(NSData *data) {
 	}
 	openedStatusValid = YES;
 
+	result = RFDiagnosticWriteResultFileValidationFailed;
 	if (!S_ISREG(openedStatus.st_mode) ||
 		openedStatus.st_uid != geteuid() ||
 		openedStatus.st_nlink != 1 ||
-		fchmod(fileDescriptor, S_IRUSR | S_IWUSR) != 0 ||
-		fcntl(fileDescriptor, F_SETPROTECTIONCLASS, RFProtectionClassC) != 0 ||
-		fcntl(fileDescriptor, F_GETPROTECTIONCLASS) != RFProtectionClassC) {
+		fchmod(fileDescriptor, S_IRUSR | S_IWUSR) != 0) {
 		goto cleanup;
 	}
 	outputValidated = YES;
 
+	result = RFDiagnosticWriteResultProtectionFailed;
+	if (fcntl(fileDescriptor, F_SETPROTECTIONCLASS, RFProtectionClassC) != 0 ||
+		fcntl(fileDescriptor, F_GETPROTECTIONCLASS) != RFProtectionClassC) {
+		goto cleanup;
+	}
+
+	result = RFDiagnosticWriteResultDataWriteFailed;
 	if (ftruncate(fileDescriptor, 0) != 0 ||
 		!RFWriteAllBytes(fileDescriptor, bytes, dataLength) ||
 		fsync(fileDescriptor) != 0) {
 		goto cleanup;
 	}
 
+	result = RFDiagnosticWriteResultFinalValidationFailed;
 	if (fstat(fileDescriptor, &openedStatus) != 0 ||
 		!S_ISREG(openedStatus.st_mode) ||
 		openedStatus.st_uid != geteuid() ||
@@ -307,10 +509,10 @@ static BOOL RFSecurelyWriteData(NSData *data) {
 		goto cleanup;
 	}
 
-	success = YES;
+	result = RFDiagnosticWriteResultSuccess;
 
 cleanup:
-	if (!success && directoryDescriptor >= 0 && openedStatusValid && (outputCreated || outputValidated)) {
+	if (result != RFDiagnosticWriteResultSuccess && directoryDescriptor >= 0 && openedStatusValid && (outputCreated || outputValidated)) {
 		struct stat cleanupStatus = {0};
 		if (fstatat(directoryDescriptor, outputFileName, &cleanupStatus, AT_SYMLINK_NOFOLLOW) == 0 &&
 			RFSameInode(openedStatus, cleanupStatus)) {
@@ -323,11 +525,12 @@ cleanup:
 	if (directoryDescriptor >= 0) {
 		close(directoryDescriptor);
 	}
-	return success;
+	return result;
 }
 
 static void RFWriteStateLocked(void) {
 	if (RFDiagnosticState == nil) {
+		RFEnqueueDiagnosticStatus(RFDiagnosticStageStateUnavailable);
 		return;
 	}
 
@@ -337,10 +540,14 @@ static void RFWriteStateLocked(void) {
 		options:0
 		error:&serializationError];
 	if (data == nil || serializationError != nil) {
+		RFEnqueueDiagnosticStatus(RFDiagnosticStageSerializationFailed);
 		NSLog(@"%@ plist serialization failed", RFDiagnosticLogPrefix);
 		return;
 	}
-	if (!RFSecurelyWriteData(data)) {
+
+	RFDiagnosticWriteResult result = RFSecurelyWriteData(data);
+	RFEnqueueDiagnosticStatus(RFDiagnosticStageForWriteResult(result));
+	if (result != RFDiagnosticWriteResultSuccess) {
 		NSLog(@"%@ private plist write failed", RFDiagnosticLogPrefix);
 	}
 }
@@ -377,6 +584,7 @@ static void RFEnqueueEvent(NSDictionary *event) {
 				RFDiagnosticState[@"counters"] = counters;
 				RFWriteStateLocked();
 			} @catch (__unused NSException *exception) {
+				RFEnqueueDiagnosticStatus(RFDiagnosticStageWriterException);
 				NSLog(@"%@ writerException", RFDiagnosticLogPrefix);
 			}
 		}
@@ -411,6 +619,7 @@ static NSDictionary *RFBuildLifecycleEvent(id object, SEL selector, NSString *ev
 
 	id context = RFTransitionContextForObject(object);
 	NSNumber *contextOrientation = nil;
+	BOOL contextOrientationKnown = NO;
 	if (context != nil) {
 		event[@"transitionContextClass"] = RFBoundedString(NSStringFromClass([context class]), 160);
 		NSString *orientationSource = nil;
@@ -418,12 +627,20 @@ static NSDictionary *RFBuildLifecycleEvent(id object, SEL selector, NSString *ev
 		if (contextOrientation != nil) {
 			event[@"contextInterfaceOrientation"] = contextOrientation;
 			event[@"contextOrientationSelector"] = RFBoundedString(orientationSource, 80);
+			NSInteger contextOrientationValue = contextOrientation.integerValue;
+			contextOrientationKnown = contextOrientationValue != UIInterfaceOrientationUnknown;
 		}
 	}
+	event[@"contextOrientationKnown"] = @(contextOrientationKnown);
 
-	NSInteger effectiveOrientation = contextOrientation != nil
-		? contextOrientation.integerValue
-		: [event[@"sceneInterfaceOrientation"] integerValue];
+	NSInteger effectiveOrientation = [event[@"sceneInterfaceOrientation"] integerValue];
+	NSString *effectiveOrientationSource = @"scene";
+	if (contextOrientationKnown) {
+		effectiveOrientation = contextOrientation.integerValue;
+		effectiveOrientationSource = @"context";
+	}
+	event[@"effectiveInterfaceOrientation"] = @(effectiveOrientation);
+	event[@"effectiveOrientationSource"] = effectiveOrientationSource;
 	event[@"portrait"] = @(UIInterfaceOrientationIsPortrait((UIInterfaceOrientation)effectiveOrientation));
 	return event;
 }
@@ -652,7 +869,7 @@ static NSDictionary *RFInstallLifecycleHooks(void) {
 
 static NSDictionary *RFInitialDiagnosticState(NSDictionary *inventory) {
 	return @{
-		@"schemaVersion": @1,
+		@"schemaVersion": @2,
 		@"packageVersion": RFDiagnosticPackageVersion,
 		@"baselineVersion": RFDiagnosticBaselineVersion,
 		@"sessionID": NSUUID.UUID.UUIDString,
@@ -673,36 +890,64 @@ static NSDictionary *RFInitialDiagnosticState(NSDictionary *inventory) {
 }
 
 void RFTransitionDiagnosticsStart(void) {
-	if (!NSThread.isMainThread) {
-		NSLog(@"%@ startup skipped off main thread", RFDiagnosticLogPrefix);
-		return;
-	}
-	if (RFDiagnosticsStarted) {
-		return;
-	}
-	RFDiagnosticsStarted = YES;
-
 	@try {
+		if (RFDiagnosticStatusQueue == nil) {
+			RFDiagnosticStatusQueue = dispatch_queue_create(
+				"com.tsangbaby.randomiconsflip.transitiondiag.status",
+				DISPATCH_QUEUE_SERIAL
+			);
+		}
+		if (RFDiagnosticStatusQueue == nil) {
+			NSLog(@"%@ status queue unavailable", RFDiagnosticLogPrefix);
+			return;
+		}
+		if (!NSThread.isMainThread) {
+			RFEnqueueDiagnosticStatus(RFDiagnosticStageOffMain);
+			NSLog(@"%@ startup skipped off main thread", RFDiagnosticLogPrefix);
+			return;
+		}
+		if (RFDiagnosticsStarted) {
+			return;
+		}
+		RFDiagnosticsStarted = YES;
+		RFEnqueueDiagnosticStatus(RFDiagnosticStageEntry);
+
 		RFDiagnosticWriterQueue = dispatch_queue_create("com.tsangbaby.randomiconsflip.transitiondiag.writer", DISPATCH_QUEUE_SERIAL);
+		if (RFDiagnosticWriterQueue == nil) {
+			RFEnqueueDiagnosticStatus(RFDiagnosticStageStartupException);
+			return;
+		}
+		RFEnqueueDiagnosticStatus(RFDiagnosticStageQueueReady);
+
 		NSDictionary *inventory = RFBuildClassInventory();
+		RFEnqueueDiagnosticStatus(RFDiagnosticStageInventoryReady);
 		NSMutableDictionary *initialState = [RFInitialDiagnosticState(inventory) mutableCopy];
 		dispatch_sync(RFDiagnosticWriterQueue, ^{
 			RFDiagnosticState = initialState;
 		});
 
 		NSDictionary *hookStatuses = RFInstallLifecycleHooks();
+		RFEnqueueDiagnosticStatus(RFDiagnosticStageHooksReady);
 		dispatch_async(RFDiagnosticWriterQueue, ^{
 			@autoreleasepool {
 				@try {
 					RFDiagnosticState[@"hooks"] = hookStatuses;
 					RFWriteStateLocked();
 				} @catch (__unused NSException *exception) {
+					RFEnqueueDiagnosticStatus(RFDiagnosticStageWriterException);
 					NSLog(@"%@ writerException", RFDiagnosticLogPrefix);
 				}
 			}
 		});
-		NSLog(@"%@ started version=%@ output=%@", RFDiagnosticLogPrefix, RFDiagnosticPackageVersion, RFTransitionDiagnosticsOutputPath());
+		NSLog(
+			@"%@ started version=%@ output=%@ status=%s",
+			RFDiagnosticLogPrefix,
+			RFDiagnosticPackageVersion,
+			RFTransitionDiagnosticsOutputPath(),
+			RFDiagnosticStatusPath
+		);
 	} @catch (__unused NSException *exception) {
+		RFEnqueueDiagnosticStatus(RFDiagnosticStageStartupException);
 		NSLog(@"%@ startupException", RFDiagnosticLogPrefix);
 	}
 }

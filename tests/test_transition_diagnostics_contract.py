@@ -10,7 +10,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DIAGNOSTICS_VERSION = "0.0.9~diag1"
+DIAGNOSTICS_VERSION = "0.0.9~diag2"
 
 
 class AppToHomeDiagnosticsContract(unittest.TestCase):
@@ -38,6 +38,53 @@ class AppToHomeDiagnosticsContract(unittest.TestCase):
         self.assertIn("iOS 15.4.1", guide)
         self.assertIn("iOS 16.0.3", guide)
         self.assertIn("com.tsangbaby.randomiconsflip.transitiondiag.plist", guide)
+        self.assertIn("/tmp/com.tsangbaby.randomiconsflip.transitiondiag.status.txt", guide)
+
+    def test_diag2_uses_literal_mobile_sink_and_fixed_low_level_status_file(self) -> None:
+        source = self.source()
+
+        self.assertIn(
+            'return @"/var/mobile/Library/Preferences/com.tsangbaby.randomiconsflip.transitiondiag.plist";',
+            source,
+        )
+        self.assertNotIn("NSSearchPathForDirectoriesInDomains", source)
+        self.assertIn(
+            '"/tmp/com.tsangbaby.randomiconsflip.transitiondiag.status.txt"', source
+        )
+        for required in (
+            "RFDiagnosticStage",
+            "RFWriteDiagnosticStatus",
+            "RFDiagnosticWriteResult",
+            "RFDiagnosticStageForWriteResult",
+            '"entry"',
+            '"queue-ready"',
+            '"inventory-ready"',
+            '"hooks-ready"',
+            '"plist-write-ok"',
+            '"plist-protection-failed"',
+            "O_NOFOLLOW",
+            "O_NONBLOCK",
+            "fstat",
+            "S_ISREG",
+            "st_uid != geteuid()",
+            "st_nlink != 1",
+            "fchmod",
+            "ftruncate",
+        ):
+            self.assertIn(required, source)
+
+        self.assertNotIn("exception.reason", source)
+        self.assertNotIn("exception.name", source)
+
+    def test_diag2_status_writes_are_async_and_lifetime_bounded(self) -> None:
+        source = self.source()
+
+        self.assertIn("static dispatch_queue_t RFDiagnosticStatusQueue", source)
+        self.assertIn("RFEnqueueDiagnosticStatus", source)
+        self.assertIn("dispatch_async(RFDiagnosticStatusQueue", source)
+        self.assertNotIn("dispatch_sync(RFDiagnosticStatusQueue", source)
+        self.assertEqual(source.count("RFWriteDiagnosticStatus("), 2)
+        self.assertIn("RFMaximumStoredEvents = 128", source)
 
     def test_probe_is_started_separately_and_hooks_only_after_abi_validation(self) -> None:
         makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
@@ -201,7 +248,7 @@ class AppToHomeDiagnosticsContract(unittest.TestCase):
         secure_open = source.index("O_NOFOLLOW")
         data_write = source.index("RFWriteAllBytes(fileDescriptor")
         self.assertLess(secure_open, data_write)
-        self.assertEqual(source.count("O_NONBLOCK"), 2)
+        self.assertEqual(source.count("O_NONBLOCK"), 5)
         self.assertNotIn("renameat", source)
         self.assertNotIn("temporaryFileName", source)
 
@@ -522,6 +569,24 @@ class AppToHomeDiagnosticsContract(unittest.TestCase):
         source = self.source()
         self.assertIn("UIAccessibilityIsReduceMotionEnabled()", source)
         self.assertNotIn("UIAccessibility.isReduceMotionEnabled", source)
+
+    def test_unknown_context_orientation_falls_back_to_scene_orientation(self) -> None:
+        source = self.source()
+
+        for required in (
+            '@"schemaVersion": @2',
+            "contextOrientationKnown",
+            "contextOrientationValue != UIInterfaceOrientationUnknown",
+            "effectiveInterfaceOrientation",
+            "effectiveOrientationSource",
+            '@"scene"',
+            '@"context"',
+        ):
+            self.assertIn(required, source)
+
+        self.assertNotIn(
+            "NSInteger effectiveOrientation = contextOrientation != nil", source
+        )
 
 
 if __name__ == "__main__":

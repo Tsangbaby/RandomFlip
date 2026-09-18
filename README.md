@@ -8,11 +8,11 @@
 - 最低部署版本：iOS 15.0
 - 架构：Swift 核心 + 极小 Logos 启动 Hook
 - 注入范围：仅 `com.apple.springboard`
-- 当前候选版本：RootHide 诊断包 `0.0.9~diag1`（基线 `0.0.8`）
+- 当前候选版本：RootHide 诊断包 `0.0.9~diag2`（基线 `0.0.8`）
 - Debian 包标识符：`com.tsangbaby.randomiconsflip`
 - Rootless / RootHide：项目结构预留，可由现代 Theos scheme 构建
 - 编译方式：由 GitHub Actions `macos-14` 云端构建
-- 实机验证：`0.0.4` 至 `0.0.8` 的图标动画均已通过实机验证；`0.0.9~diag1` 仅用于采集 iOS 15.4.1 / 16.0.3 的 App → Home 转场证据，尚待两机实测
+- 实机验证：`0.0.4` 至 `0.0.8` 的图标动画均已通过实机验证；`0.0.9~diag1` 已取得 iOS 15.4.1 证据但未能在 iOS 16.0.3 生成诊断文件，`0.0.9~diag2` 仅用于自动定位该启动/写入边界并继续采集 App → Home 证据
 
 源码合同、云端构建和包级验证是不同证据；不能仅凭源码合同表述为“已生成测试包”，也不能仅凭构建成功表述为“已在 iOS 15+ 实机验证”。
 
@@ -84,7 +84,7 @@ RandomFlip-Swift/
 
 ```sh
 # RootHide
-make clean package FINALPACKAGE=1 PACKAGE_VERSION=0.0.9~diag1 THEOS_PACKAGE_SCHEME=roothide
+make clean package FINALPACKAGE=1 PACKAGE_VERSION=0.0.9~diag2 THEOS_PACKAGE_SCHEME=roothide
 ```
 
 构建前应先确认所用 Theos 版本确实包含 RootHide scheme，并使用至少 iOS 15 SDK。不要把通过 Python 源码合同等同于 Swift 编译成功。
@@ -97,7 +97,7 @@ make clean package FINALPACKAGE=1 PACKAGE_VERSION=0.0.9~diag1 THEOS_PACKAGE_SCHE
 python3 -m unittest discover -s tests -p 'test_*.py'
 ```
 
-`0.0.8` 已通过 RootHide 包级验证和实机验证。`0.0.9~diag1` 必须先完成源码、RootHide 包级验证，再分别在 iOS 15.4.1 与 iOS 16.0.3 按 `DIAGNOSTICS.md` 采样；诊断结果不能表述为正式“顶部磁吸收束”功能已经实现或通过实机验证。
+`0.0.8` 已通过 RootHide 包级验证和实机验证。`0.0.9~diag2` 必须先完成源码、RootHide 包级验证，再在 iOS 16.0.3 按 `DIAGNOSTICS.md` 采样；诊断结果不能表述为正式“顶部磁吸收束”功能已经实现或通过实机验证。
 
 ## 署名与许可边界
 
