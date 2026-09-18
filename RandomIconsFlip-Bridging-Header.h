@@ -13,6 +13,11 @@ FOUNDATION_EXPORT NSNumber * _Nullable RFReadBoolSelector(
 	NSString *selectorName
 );
 
+FOUNDATION_EXPORT NSNumber * _Nullable RFReadIntegerSelector(
+	id _Nullable object,
+	NSString *selectorName
+);
+
 FOUNDATION_EXPORT id _Nullable RFInvokeObjectSelector(
 	id _Nullable object,
 	NSString *selectorName

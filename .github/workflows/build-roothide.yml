@@ -22,7 +22,7 @@ env:
   SDK_RELEASE_COMMIT_SHA: 146e41ff2c292168388929e43c9b4de2f00e36b3
   SDK_NAME: iPhoneOS16.5.sdk
   SDK_ARCHIVE_SHA256: 5e0fd3f01266cce4ce012d4a99b38eb56578fca40d09edc81cd83dee958202fb
-  PACKAGE_VERSION: 0.0.8
+  PACKAGE_VERSION: "0.0.9~diag1"
 
 jobs:
   build-roothide:
@@ -34,7 +34,7 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
-          fetch-depth: 1
+          fetch-depth: 2
           persist-credentials: false
 
       - name: Verify source and requested scheme
@@ -44,8 +44,15 @@ jobs:
           test "${{ inputs.scheme }}" = "roothide"
           test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
           test -z "$(git status --porcelain)"
-          grep -Eq "^Version: ${PACKAGE_VERSION}$" control
-          grep -Eq "^PACKAGE_VERSION = ${PACKAGE_VERSION}$" Makefile
+          grep -Fqx "Version: ${PACKAGE_VERSION}" control
+          grep -Fqx "PACKAGE_VERSION = ${PACKAGE_VERSION}" Makefile
+
+      - name: Run source contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check HEAD^ HEAD
+          PYTHONDONTWRITEBYTECODE=1 python3 -B -m unittest discover -s tests -p 'test_*.py' -v
 
       - name: Inspect Apple toolchain
         shell: bash
@@ -132,6 +139,10 @@ jobs:
           package_maintainer="$(dpkg-deb -f "$deb" Maintainer)"
           package_author="$(dpkg-deb -f "$deb" Author)"
           package_icon="$(dpkg-deb -f "$deb" Icon)"
+          package_depends="$(dpkg-deb -f "$deb" Depends)"
+          package_description="$(dpkg-deb -f "$deb" Description)"
+          package_section="$(dpkg-deb -f "$deb" Section)"
+          package_depiction="$(dpkg-deb -f "$deb" SileoDepiction)"
           package_conflicts="$(dpkg-deb -f "$deb" Conflicts)"
           package_replaces="$(dpkg-deb -f "$deb" Replaces)"
           test "$package_name" = "com.tsangbaby.randomiconsflip"
@@ -140,6 +151,10 @@ jobs:
           test "$package_maintainer" = "Tsangbaby"
           test "$package_author" = "Tsangbaby"
           test "$package_icon" = "https://tsangbaby.github.io/Icon/RandomIconFlip.png"
+          test "$package_depends" = "firmware (>= 15.0), mobilesubstrate"
+          test "$package_description" = "Diagnostic build based on 0.0.8. Records bounded App-to-Home transition capability and lifecycle metadata without changing system animations."
+          test "$package_section" = "Tweaks"
+          test "$package_depiction" = "https://tsangbaby.github.io/depictions/com.tsangbaby.randomiconsflip/depiction.json"
           test "$package_conflicts" = "net.limneos.randomiconsflip"
           test "$package_replaces" = "net.limneos.randomiconsflip"
 
@@ -149,6 +164,31 @@ jobs:
           test -f "$extract_dir/Library/MobileSubstrate/DynamicLibraries/RandomIconsFlip.dylib"
           test -f "$extract_dir/Library/MobileSubstrate/DynamicLibraries/RandomIconsFlip.plist"
           test ! -e "$extract_dir/var/jb"
+
+          filter_plist="$extract_dir/Library/MobileSubstrate/DynamicLibraries/RandomIconsFlip.plist"
+          python3 - "$filter_plist" <<'PY'
+          import plistlib
+          import sys
+          from pathlib import Path
+
+          with Path(sys.argv[1]).open("rb") as handle:
+              value = plistlib.load(handle)
+          expected = {"Filter": {"Bundles": ["com.apple.springboard"]}}
+          if value != expected:
+              raise SystemExit(f"unexpected injection filter: {value!r}")
+          PY
+
+          diagnostic_dylib="$extract_dir/Library/MobileSubstrate/DynamicLibraries/RandomIconsFlip.dylib"
+          strings "$diagnostic_dylib" > "$RUNNER_TEMP/randomflip-dylib-strings.txt"
+          grep -Fq '[RFAppToHomeDiag]' "$RUNNER_TEMP/randomflip-dylib-strings.txt"
+          grep -Fq '0.0.9~diag1' "$RUNNER_TEMP/randomflip-dylib-strings.txt"
+          grep -Fq '0.0.8' "$RUNNER_TEMP/randomflip-dylib-strings.txt"
+
+          otool -L "$diagnostic_dylib" > "$artifact_dir/MACHO_DEPENDENCIES.txt"
+          grep -Fq '@loader_path/.jbroot/usr/lib/libsubstrate.dylib' "$artifact_dir/MACHO_DEPENDENCIES.txt"
+          ! grep -Fq '/var/jb/' "$artifact_dir/MACHO_DEPENDENCIES.txt"
+          ! grep -Eq '^[[:space:]]+/usr/lib/libsubstrate\.dylib ' "$artifact_dir/MACHO_DEPENDENCIES.txt"
+          ! grep -Fq '/Library/Frameworks/CydiaSubstrate.framework/CydiaSubstrate' "$artifact_dir/MACHO_DEPENDENCIES.txt"
 
           found_macho=0
           find "$extract_dir" -type f -print0 > "$RUNNER_TEMP/randomflip-files.list"
@@ -160,10 +200,13 @@ jobs:
                 archs="$(lipo -archs "$candidate")"
                 test "$archs" = "arm64e"
                 ldid -e "$candidate" > /dev/null
+                codesign --verify --strict --verbose=2 "$candidate"
+                python3 tests/verify_macho_signature.py "$candidate" >> "$artifact_dir/MACHO_SIGNATURES.txt"
                 ;;
             esac
           done < "$RUNNER_TEMP/randomflip-files.list"
           test "$found_macho" -gt 0
+          test -s "$artifact_dir/MACHO_SIGNATURES.txt"
 
           cp "$deb" "$artifact_dir/"
           deb_basename="$(basename "$deb")"
@@ -180,6 +223,8 @@ jobs:
             printf 'Icon: %s\n' "$package_icon"
             printf 'Conflicts: %s\n' "$package_conflicts"
             printf 'Replaces: %s\n' "$package_replaces"
+            printf 'Build type: App-to-Home diagnostic\n'
+            printf 'Baseline: 0.0.8\n'
             printf 'Theos: %s\n' "$ROOTHIDE_THEOS_SHA"
             printf 'SDK repository: %s\n' "$SDK_REPOSITORY_SHA"
             printf 'SDK release: %s\n' "$SDK_RELEASE_TAG"
@@ -188,6 +233,7 @@ jobs:
 
           test "$(cat "$artifact_dir/SOURCE_COMMIT.txt")" = "$GITHUB_SHA"
           test "$(awk '{ print $1 }' "$artifact_dir/SHA256SUMS.txt")" = "$deb_sha256"
+          (cd "$artifact_dir" && shasum -a 256 --check SHA256SUMS.txt)
           ls -l "$artifact_dir"
 
       - name: Upload RootHide artifact

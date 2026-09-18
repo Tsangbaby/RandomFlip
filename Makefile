@@ -1,7 +1,7 @@
 ARCHS = arm64 arm64e
 TARGET = iphone:clang:latest:15.0
 INSTALL_TARGET_PROCESSES = SpringBoard
-PACKAGE_VERSION = 0.0.8
+PACKAGE_VERSION = 0.0.9~diag1
 
 include $(THEOS)/makefiles/common.mk
 
@@ -9,6 +9,7 @@ TWEAK_NAME = RandomIconsFlip
 
 RandomIconsFlip_FILES = Tweak.xm \
 	RuntimeBridge.m \
+	TransitionDiagnostics.m \
 	Sources/RandomFlipManager.swift \
 	Sources/SpringBoardEnvironment.swift
 RandomIconsFlip_CFLAGS = -fobjc-arc

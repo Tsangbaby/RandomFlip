@@ -8,11 +8,11 @@
 - 最低部署版本：iOS 15.0
 - 架构：Swift 核心 + 极小 Logos 启动 Hook
 - 注入范围：仅 `com.apple.springboard`
-- 当前候选版本：RootHide `0.0.8`
+- 当前候选版本：RootHide 诊断包 `0.0.9~diag1`（基线 `0.0.8`）
 - Debian 包标识符：`com.tsangbaby.randomiconsflip`
 - Rootless / RootHide：项目结构预留，可由现代 Theos scheme 构建
 - 编译方式：由 GitHub Actions `macos-14` 云端构建
-- 实机验证：`0.0.4` 动画池、`0.0.5` 新增动画、`0.0.6` Orbit / Spiral 和 `0.0.7` Flutter / Leaf 已通过实机验证；`0.0.8` Infinity Drift / Figure Eight 尚待实机验证
+- 实机验证：`0.0.4` 至 `0.0.8` 的图标动画均已通过实机验证；`0.0.9~diag1` 仅用于采集 iOS 15.4.1 / 16.0.3 的 App → Home 转场证据，尚待两机实测
 
 源码合同、云端构建和包级验证是不同证据；不能仅凭源码合同表述为“已生成测试包”，也不能仅凭构建成功表述为“已在 iOS 15+ 实机验证”。
 
@@ -62,17 +62,21 @@ RandomFlip-Swift/
 ├── RandomIconsFlip.plist
 ├── RandomIconsFlip-Bridging-Header.h
 ├── RuntimeBridge.m
+├── TransitionDiagnostics.h
+├── TransitionDiagnostics.m
 ├── Tweak.xm
 ├── Sources/
 │   ├── RandomFlipManager.swift
 │   └── SpringBoardEnvironment.swift
 ├── tests/
-│   └── test_source_contract.py
+│   ├── test_source_contract.py
+│   └── test_transition_diagnostics_contract.py
+├── DIAGNOSTICS.md
 ├── NOTICE.md
 └── README.md
 ```
 
-`Tweak.xm` 只 Hook SpringBoard 启动方法并调用 Swift 单例。`RuntimeBridge.m` 只负责类型安全的 Objective-C runtime 消息边界。功能逻辑位于两份 Swift 文件中。
+`Tweak.xm` 仍只 Hook SpringBoard 启动方法，并分别启动原有 Swift 单例与独立诊断模块。`RuntimeBridge.m` 只负责类型安全的 Objective-C runtime 消息边界；`TransitionDiagnostics.m` 仅在 ABI 检查通过后观察系统转场生命周期，不修改动画属性。原有图标功能逻辑仍位于两份 Swift 文件中。
 
 ## 构建方式
 
@@ -80,7 +84,7 @@ RandomFlip-Swift/
 
 ```sh
 # RootHide
-make clean package FINALPACKAGE=1 PACKAGE_VERSION=0.0.8 THEOS_PACKAGE_SCHEME=roothide
+make clean package FINALPACKAGE=1 PACKAGE_VERSION=0.0.9~diag1 THEOS_PACKAGE_SCHEME=roothide
 ```
 
 构建前应先确认所用 Theos 版本确实包含 RootHide scheme，并使用至少 iOS 15 SDK。不要把通过 Python 源码合同等同于 Swift 编译成功。
@@ -93,7 +97,7 @@ make clean package FINALPACKAGE=1 PACKAGE_VERSION=0.0.8 THEOS_PACKAGE_SCHEME=roo
 python3 -m unittest discover -s tests -p 'test_*.py'
 ```
 
-`0.0.7` 已通过 RootHide 包级验证和实机验证；`0.0.8` 需完成本轮构建与包级验证后，再在 iOS 15、16 及计划声明支持的更高版本上测试 Infinity Drift / Figure Eight，以及桌面、Dock、翻页、搜索、文件夹、抖动编辑、拖拽、锁屏/解锁和减少动态效果。
+`0.0.8` 已通过 RootHide 包级验证和实机验证。`0.0.9~diag1` 必须先完成源码、RootHide 包级验证，再分别在 iOS 15.4.1 与 iOS 16.0.3 按 `DIAGNOSTICS.md` 采样；诊断结果不能表述为正式“顶部磁吸收束”功能已经实现或通过实机验证。
 
 ## 署名与许可边界
 

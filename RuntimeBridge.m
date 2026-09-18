@@ -47,6 +47,36 @@ NSNumber *RFReadBoolSelector(id object, NSString *selectorName) {
 	return @(sendBool(object, selector));
 }
 
+NSNumber *RFReadIntegerSelector(id object, NSString *selectorName) {
+	if (selectorName.length == 0) {
+		return nil;
+	}
+
+	SEL selector = NSSelectorFromString(selectorName);
+	NSMethodSignature *signature = RFZeroArgumentMethodSignature(object, selector);
+	if (signature == nil) {
+		return nil;
+	}
+
+	const char *returnType = RFSkipTypeQualifiers(signature.methodReturnType);
+	if (returnType[0] != 'q' && returnType[0] != 'Q') {
+		return nil;
+	}
+
+	@try {
+		if (returnType[0] == 'Q') {
+			unsigned long long (*sendUnsignedInteger)(id, SEL) =
+				(unsigned long long (*)(id, SEL))objc_msgSend;
+			return @(sendUnsignedInteger(object, selector));
+		}
+
+		long long (*sendSignedInteger)(id, SEL) = (long long (*)(id, SEL))objc_msgSend;
+		return @(sendSignedInteger(object, selector));
+	} @catch (__unused NSException *exception) {
+		return nil;
+	}
+}
+
 id RFInvokeObjectSelector(id object, NSString *selectorName) {
 	if (selectorName.length == 0) {
 		return nil;
