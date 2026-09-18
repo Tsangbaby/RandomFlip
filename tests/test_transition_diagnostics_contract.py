@@ -515,6 +515,11 @@ class AppToHomeDiagnosticsContract(unittest.TestCase):
         self.assertIn("returnType[0] != 'q' && returnType[0] != 'Q'", bridge)
         self.assertIn("methodSignatureForSelector", bridge)
 
+    def test_reduce_motion_uses_objective_c_uikit_api(self) -> None:
+        source = self.source()
+        self.assertIn("UIAccessibilityIsReduceMotionEnabled()", source)
+        self.assertNotIn("UIAccessibility.isReduceMotionEnabled", source)
+
 
 if __name__ == "__main__":
     unittest.main()

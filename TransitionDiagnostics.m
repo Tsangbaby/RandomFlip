@@ -2,6 +2,7 @@
 #import "RandomIconsFlip-Bridging-Header.h"
 
 #import <UIKit/UIKit.h>
+#import <UIKit/UIAccessibility.h>
 #import <errno.h>
 #import <fcntl.h>
 #import <objc/runtime.h>
@@ -397,7 +398,7 @@ static NSDictionary *RFBuildLifecycleEvent(id object, SEL selector, NSString *ev
 	}
 
 	[event addEntriesFromDictionary:RFGeometrySnapshot()];
-	event[@"reduceMotion"] = @(UIAccessibility.isReduceMotionEnabled);
+	event[@"reduceMotion"] = @(UIAccessibilityIsReduceMotionEnabled());
 
 	NSNumber *goingToLauncher = RFReadBoolSelector(object, @"isGoingToLauncher");
 	if (goingToLauncher != nil) {
