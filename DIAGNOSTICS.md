@@ -3,7 +3,7 @@
 ## 身份与边界
 
 - 基线：已合并并实机验证的 RandomFlip `0.0.8`。
-- 本诊断版本：RootHide `0.0.9~diag2`。
+- 本诊断版本：RootHide `0.0.9~diag3`。
 - 用途：确认 iOS 15.4.1 与 iOS 16.0.3 上 App → Home 的真实 transaction、modifier、selector ABI 和完成/取消生命周期。
 - 本包只观察系统对象并写入本地 plist；不修改系统动画、真实 App window、快照、frame、transform、alpha 或最终桌面状态。
 - 本包不采集 App 包名、进程标识、触摸轨迹、用户输入或 App 画面。
@@ -13,10 +13,10 @@
 
 ## 输出文件
 
-`diag2` 把主诊断文件固定写到真实用户数据路径，不再通过动态 Library 目录推导：
+`diag3` 把主诊断文件固定写到 tweak 专属的真实用户数据目录，不使用共享 Preferences 目录：
 
 ```text
-/var/mobile/Library/Preferences/com.tsangbaby.randomiconsflip.transitiondiag.plist
+/var/mobile/Library/RandomIconsFlipDiagnostics/com.tsangbaby.randomiconsflip.transitiondiag.plist
 ```
 
 同时始终尝试写一个只含固定阶段词的低级状态文件：
@@ -54,9 +54,9 @@
 
 ## iOS 16.0.3 最小测试步骤
 
-iOS 15.4.1 的 `diag1` inventory、hook 与完成事件已经取得；无需再次练习取消手势。iOS 16.0.3 只需：
+iOS 15.4.1 的 `diag1` inventory、hook 与完成事件已经取得；`diag2` 已把 iOS 16.0.3 失败定位到共享 Preferences 目录验证。无需再次练习取消手势，iOS 16.0.3 只需：
 
-1. 安装 `0.0.9~diag2` RootHide 包并注销或重启 SpringBoard 一次。
+1. 安装 `0.0.9~diag3` RootHide 包并注销或重启 SpringBoard 一次。
 2. 确认原有桌面图标随机动画仍正常。
 3. 打开任意普通竖屏 App，再正常返回桌面一次。
 4. 用 Filza 查看主 plist 路径；若文件存在，直接发送该 plist。

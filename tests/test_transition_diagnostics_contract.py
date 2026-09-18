@@ -10,7 +10,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DIAGNOSTICS_VERSION = "0.0.9~diag2"
+DIAGNOSTICS_VERSION = "0.0.9~diag3"
 
 
 class AppToHomeDiagnosticsContract(unittest.TestCase):
@@ -37,13 +37,20 @@ class AppToHomeDiagnosticsContract(unittest.TestCase):
         self.assertIn(DIAGNOSTICS_VERSION, guide)
         self.assertIn("iOS 15.4.1", guide)
         self.assertIn("iOS 16.0.3", guide)
-        self.assertIn("com.tsangbaby.randomiconsflip.transitiondiag.plist", guide)
+        self.assertIn(
+            "/var/mobile/Library/RandomIconsFlipDiagnostics/com.tsangbaby.randomiconsflip.transitiondiag.plist",
+            guide,
+        )
         self.assertIn("/tmp/com.tsangbaby.randomiconsflip.transitiondiag.status.txt", guide)
 
-    def test_diag2_uses_literal_mobile_sink_and_fixed_low_level_status_file(self) -> None:
+    def test_diag3_uses_private_mobile_sink_and_fixed_low_level_status_file(self) -> None:
         source = self.source()
 
         self.assertIn(
+            'return @"/var/mobile/Library/RandomIconsFlipDiagnostics/com.tsangbaby.randomiconsflip.transitiondiag.plist";',
+            source,
+        )
+        self.assertNotIn(
             'return @"/var/mobile/Library/Preferences/com.tsangbaby.randomiconsflip.transitiondiag.plist";',
             source,
         )
@@ -76,7 +83,7 @@ class AppToHomeDiagnosticsContract(unittest.TestCase):
         self.assertNotIn("exception.reason", source)
         self.assertNotIn("exception.name", source)
 
-    def test_diag2_status_writes_are_async_and_lifetime_bounded(self) -> None:
+    def test_diag3_status_writes_are_async_and_lifetime_bounded(self) -> None:
         source = self.source()
 
         self.assertIn("static dispatch_queue_t RFDiagnosticStatusQueue", source)

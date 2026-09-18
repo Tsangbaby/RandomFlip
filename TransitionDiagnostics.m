@@ -16,9 +16,9 @@
 #import <unistd.h>
 
 static NSString * const RFDiagnosticLogPrefix = @"[RFAppToHomeDiag]";
-static NSString * const RFDiagnosticPackageVersion = @"0.0.9~diag2";
+static NSString * const RFDiagnosticPackageVersion = @"0.0.9~diag3";
 static NSString * const RFDiagnosticBaselineVersion = @"0.0.8";
-static const char * const RFDiagnosticPackageVersionCString = "0.0.9~diag2";
+static const char * const RFDiagnosticPackageVersionCString = "0.0.9~diag3";
 static const char * const RFDiagnosticStatusPath = "/tmp/com.tsangbaby.randomiconsflip.transitiondiag.status.txt";
 static const char * const RFDiagnosticStatusDirectory = "/private/var/tmp";
 static const char * const RFDiagnosticStatusFilename = "com.tsangbaby.randomiconsflip.transitiondiag.status.txt";
@@ -96,7 +96,7 @@ static NSString *RFBoundedString(NSString *value, NSUInteger maximumLength) {
 }
 
 NSString *RFTransitionDiagnosticsOutputPath(void) {
-	return @"/var/mobile/Library/Preferences/com.tsangbaby.randomiconsflip.transitiondiag.plist";
+	return @"/var/mobile/Library/RandomIconsFlipDiagnostics/com.tsangbaby.randomiconsflip.transitiondiag.plist";
 }
 
 static NSString *RFOSBuild(void) {
