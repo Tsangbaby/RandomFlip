@@ -15,6 +15,8 @@ public final class RandomFlipManager: NSObject {
         case orbitSpiral
         case flutterLeaf
         case infinityDrift
+        case rocketLaunch
+        case slingshot
     }
 
     private static let singleton = RandomFlipManager(environment: SpringBoardEnvironment())
@@ -31,7 +33,9 @@ public final class RandomFlipManager: NSObject {
         .jelly, .jelly,
         .orbitSpiral, .orbitSpiral,
         .flutterLeaf, .flutterLeaf,
-        .infinityDrift, .infinityDrift
+        .infinityDrift, .infinityDrift,
+        .rocketLaunch, .rocketLaunch,
+        .slingshot, .slingshot
     ]
 
     private let environment: SpringBoardEnvironment
@@ -187,6 +191,10 @@ public final class RandomFlipManager: NSObject {
             animateFlutterLeaf(on: view, duration: duration, completion: completion)
         case .infinityDrift:
             animateInfinityDrift(on: view, duration: duration, completion: completion)
+        case .rocketLaunch:
+            animateRocketLaunch(on: view, duration: duration, completion: completion)
+        case .slingshot:
+            animateSlingshot(on: view, duration: duration, completion: completion)
         }
     }
 
@@ -584,6 +592,132 @@ public final class RandomFlipManager: NSObject {
                     .translatedBy(x: -infinityOffsetX * 0.72, y: infinityOffsetY)
             }
             UIView.addKeyframe(withRelativeStartTime: 0.875, relativeDuration: 0.125) {
+                view.transform = baseTransform
+            }
+        } completion: { finished in
+            view.transform = baseTransform
+            completion(finished)
+        }
+    }
+
+    private func animateRocketLaunch(
+        on view: UIView,
+        duration: TimeInterval,
+        completion: @escaping (Bool) -> Void
+    ) {
+        let baseTransform = view.transform
+        let launchHeight: CGFloat = 30.0
+        let landingDepth: CGFloat = 5.0
+        let launchAngle: CGFloat = Bool.random()
+            ? CGFloat.pi / 18.0
+            : -CGFloat.pi / 18.0
+        let options: UIView.KeyframeAnimationOptions = [
+            .calculationModeCubic,
+            .beginFromCurrentState,
+            .allowUserInteraction
+        ]
+
+        UIView.animateKeyframes(
+            withDuration: min(duration, 1.05),
+            delay: 0,
+            options: options
+        ) {
+            UIView.addKeyframe(withRelativeStartTime: 0.00, relativeDuration: 0.14) {
+                view.transform = baseTransform
+                    .translatedBy(x: 0, y: 4.0)
+                    .scaledBy(x: 1.22, y: 0.76)
+            }
+            UIView.addKeyframe(withRelativeStartTime: 0.14, relativeDuration: 0.26) {
+                view.transform = baseTransform
+                    .translatedBy(x: 0, y: -launchHeight * 0.65)
+                    .rotated(by: launchAngle * 0.65)
+                    .scaledBy(x: 1.08, y: 0.94)
+            }
+            UIView.addKeyframe(withRelativeStartTime: 0.40, relativeDuration: 0.22) {
+                view.transform = baseTransform
+                    .translatedBy(x: 0, y: -launchHeight)
+                    .rotated(by: launchAngle)
+                    .scaledBy(x: 1.14, y: 1.08)
+            }
+            UIView.addKeyframe(withRelativeStartTime: 0.62, relativeDuration: 0.18) {
+                view.transform = baseTransform
+                    .translatedBy(x: 0, y: landingDepth)
+                    .rotated(by: launchAngle * 0.35)
+                    .scaledBy(x: 1.28, y: 0.72)
+            }
+            UIView.addKeyframe(withRelativeStartTime: 0.80, relativeDuration: 0.12) {
+                view.transform = baseTransform
+                    .translatedBy(x: 0, y: -3.0)
+                    .scaledBy(x: 0.96, y: 1.08)
+            }
+            UIView.addKeyframe(withRelativeStartTime: 0.92, relativeDuration: 0.08) {
+                view.transform = baseTransform
+            }
+        } completion: { finished in
+            view.transform = baseTransform
+            completion(finished)
+        }
+    }
+
+    private func animateSlingshot(
+        on view: UIView,
+        duration: TimeInterval,
+        completion: @escaping (Bool) -> Void
+    ) {
+        let baseTransform = view.transform
+        let direction: CGFloat = Bool.random() ? 1.0 : -1.0
+        let verticalDirection: CGFloat = Bool.random() ? 1.0 : -1.0
+        let slingshotOffsetX: CGFloat = 30.0
+        let slingshotOffsetY: CGFloat = 14.0
+        let slingshotAngle = direction * CGFloat.pi / 5.0
+        let options: UIView.KeyframeAnimationOptions = [
+            .calculationModeCubic,
+            .beginFromCurrentState,
+            .allowUserInteraction
+        ]
+
+        UIView.animateKeyframes(
+            withDuration: min(duration, 1.00),
+            delay: 0,
+            options: options
+        ) {
+            UIView.addKeyframe(withRelativeStartTime: 0.00, relativeDuration: 0.16) {
+                view.transform = baseTransform
+                    .translatedBy(
+                        x: -direction * slingshotOffsetX * 0.42,
+                        y: -verticalDirection * slingshotOffsetY * 0.45
+                    )
+                    .rotated(by: -slingshotAngle * 0.45)
+                    .scaledBy(x: 0.86, y: 1.10)
+            }
+            UIView.addKeyframe(withRelativeStartTime: 0.16, relativeDuration: 0.30) {
+                view.transform = baseTransform
+                    .translatedBy(
+                        x: direction * slingshotOffsetX,
+                        y: verticalDirection * slingshotOffsetY
+                    )
+                    .rotated(by: slingshotAngle)
+                    .scaledBy(x: 1.18, y: 0.86)
+            }
+            UIView.addKeyframe(withRelativeStartTime: 0.46, relativeDuration: 0.22) {
+                view.transform = baseTransform
+                    .translatedBy(
+                        x: -direction * slingshotOffsetX * 0.48,
+                        y: -verticalDirection * slingshotOffsetY * 0.30
+                    )
+                    .rotated(by: -slingshotAngle * 0.48)
+                    .scaledBy(x: 0.92, y: 1.08)
+            }
+            UIView.addKeyframe(withRelativeStartTime: 0.68, relativeDuration: 0.17) {
+                view.transform = baseTransform
+                    .translatedBy(
+                        x: direction * slingshotOffsetX * 0.16,
+                        y: verticalDirection * slingshotOffsetY * 0.10
+                    )
+                    .rotated(by: slingshotAngle * 0.18)
+                    .scaledBy(x: 1.05, y: 0.97)
+            }
+            UIView.addKeyframe(withRelativeStartTime: 0.85, relativeDuration: 0.15) {
                 view.transform = baseTransform
             }
         } completion: { finished in
