@@ -81,7 +81,7 @@ class RandomFlipSwiftSourceContract(unittest.TestCase):
         self.assertIn("consecutiveReadyTicks = 0", manager)
         self.assertGreaterEqual((manager + environment).count("@MainActor"), 2)
 
-    def test_random_animation_pool_uses_ten_transform_safe_styles(self) -> None:
+    def test_random_animation_pool_uses_twelve_transform_safe_styles(self) -> None:
         manager = (ROOT / "Sources" / "RandomFlipManager.swift").read_text(encoding="utf-8")
 
         for style in (
@@ -95,6 +95,8 @@ class RandomFlipSwiftSourceContract(unittest.TestCase):
             "orbitSpiral",
             "flutterLeaf",
             "infinityDrift",
+            "rocketLaunch",
+            "slingshot",
         ):
             self.assertIn(f"case {style}", manager)
 
@@ -106,7 +108,7 @@ class RandomFlipSwiftSourceContract(unittest.TestCase):
         self.assertIsNotNone(pool)
         assert pool is not None
         styles = re.findall(
-            r"\.(flip|bounce|wiggle|rotation|horizontalShake|jumpLanding|jelly|orbitSpiral|flutterLeaf|infinityDrift)",
+            r"\.(flip|bounce|wiggle|rotation|horizontalShake|jumpLanding|jelly|orbitSpiral|flutterLeaf|infinityDrift|rocketLaunch|slingshot)",
             pool.group(1),
         )
         self.assertCountEqual(
@@ -122,6 +124,8 @@ class RandomFlipSwiftSourceContract(unittest.TestCase):
                 "orbitSpiral", "orbitSpiral",
                 "flutterLeaf", "flutterLeaf",
                 "infinityDrift", "infinityDrift",
+                "rocketLaunch", "rocketLaunch",
+                "slingshot", "slingshot",
             ],
         )
         self.assertEqual(styles.count("flip"), 1)
@@ -135,6 +139,8 @@ class RandomFlipSwiftSourceContract(unittest.TestCase):
             "orbitSpiral",
             "flutterLeaf",
             "infinityDrift",
+            "rocketLaunch",
+            "slingshot",
         ):
             self.assertEqual(styles.count(style), 2)
         self.assertIn("Self.animationPool.randomElement() ?? .flip", manager)
@@ -150,10 +156,12 @@ class RandomFlipSwiftSourceContract(unittest.TestCase):
             "animateOrbitSpiral",
             "animateFlutterLeaf",
             "animateInfinityDrift",
+            "animateRocketLaunch",
+            "animateSlingshot",
         ):
             self.assertIn(f"private func {helper}", manager)
         self.assertIn("UIView.animateKeyframes", manager)
-        self.assertGreaterEqual(manager.count("let baseTransform = view.transform"), 9)
+        self.assertGreaterEqual(manager.count("let baseTransform = view.transform"), 11)
         self.assertIn("baseTransform.scaledBy", manager)
         self.assertIn("baseTransform.rotated(by:", manager)
         self.assertGreaterEqual(manager.count("view.transform = baseTransform"), 3)
@@ -348,7 +356,7 @@ class RandomFlipSwiftSourceContract(unittest.TestCase):
         self.assertIn("animateInfinityDrift(on: view, duration: duration, completion: completion)", manager)
 
         method = re.search(
-            r"private func animateInfinityDrift\((.*?)\n    }\n\n    private func finishAnimation",
+            r"private func animateInfinityDrift\((.*?)\n    }\n\n    private func animateRocketLaunch",
             manager,
             re.DOTALL,
         )
@@ -400,6 +408,118 @@ class RandomFlipSwiftSourceContract(unittest.TestCase):
         self.assertNotIn("view.center =", body)
         self.assertNotIn("view.alpha =", body)
         self.assertNotIn("layer.transform", body)
+        self.assertNotIn("removeAllAnimations", body)
+
+    def test_rocket_launch_has_bounded_takeoff_landing_and_restores_transform(self) -> None:
+        manager = (ROOT / "Sources" / "RandomFlipManager.swift").read_text(encoding="utf-8")
+
+        self.assertIn("case rocketLaunch", manager)
+        pool = re.search(
+            r"private static let animationPool: \[IconAnimationStyle\] = \[(.*?)\]",
+            manager,
+            re.DOTALL,
+        )
+        self.assertIsNotNone(pool)
+        assert pool is not None
+        self.assertEqual(pool.group(1).count(".rocketLaunch"), 2)
+        self.assertIn("case .rocketLaunch:", manager)
+        self.assertIn("animateRocketLaunch(on: view, duration: duration, completion: completion)", manager)
+
+        method = re.search(
+            r"private func animateRocketLaunch\((.*?)\n    }\n\n    private func animateSlingshot",
+            manager,
+            re.DOTALL,
+        )
+        self.assertIsNotNone(method)
+        assert method is not None
+        body = method.group(1)
+        for expected in (
+            "let baseTransform = view.transform",
+            "let launchHeight: CGFloat = 30.0",
+            "let landingDepth: CGFloat = 5.0",
+            "CGFloat.pi / 18.0",
+            "withDuration: min(duration, 1.05)",
+            ".translatedBy(x: 0, y: -launchHeight)",
+            ".translatedBy(x: 0, y: landingDepth)",
+            ".scaledBy(x: 1.28, y: 0.72)",
+            "view.transform = baseTransform",
+            "completion(finished)",
+        ):
+            self.assertIn(expected, body)
+        self.assertEqual(
+            re.findall(
+                r"withRelativeStartTime: ([0-9.]+), relativeDuration: ([0-9.]+)",
+                body,
+            ),
+            [
+                ("0.00", "0.14"),
+                ("0.14", "0.26"),
+                ("0.40", "0.22"),
+                ("0.62", "0.18"),
+                ("0.80", "0.12"),
+                ("0.92", "0.08"),
+            ],
+        )
+        self.assertNotIn("view.frame =", body)
+        self.assertNotIn("view.center =", body)
+        self.assertNotIn("view.alpha =", body)
+        self.assertNotIn("removeAllAnimations", body)
+
+    def test_slingshot_has_four_directional_paths_and_restores_transform(self) -> None:
+        manager = (ROOT / "Sources" / "RandomFlipManager.swift").read_text(encoding="utf-8")
+
+        self.assertIn("case slingshot", manager)
+        pool = re.search(
+            r"private static let animationPool: \[IconAnimationStyle\] = \[(.*?)\]",
+            manager,
+            re.DOTALL,
+        )
+        self.assertIsNotNone(pool)
+        assert pool is not None
+        self.assertEqual(pool.group(1).count(".slingshot"), 2)
+        self.assertIn("case .slingshot:", manager)
+        self.assertIn("animateSlingshot(on: view, duration: duration, completion: completion)", manager)
+
+        method = re.search(
+            r"private func animateSlingshot\((.*?)\n    }\n\n    private func finishAnimation",
+            manager,
+            re.DOTALL,
+        )
+        self.assertIsNotNone(method)
+        assert method is not None
+        body = method.group(1)
+        for expected in (
+            "let baseTransform = view.transform",
+            "let direction: CGFloat = Bool.random() ? 1.0 : -1.0",
+            "let verticalDirection: CGFloat = Bool.random() ? 1.0 : -1.0",
+            "let slingshotOffsetX: CGFloat = 30.0",
+            "let slingshotOffsetY: CGFloat = 14.0",
+            "let slingshotAngle = direction * CGFloat.pi / 5.0",
+            "withDuration: min(duration, 1.00)",
+            "x: direction * slingshotOffsetX",
+            "y: verticalDirection * slingshotOffsetY",
+            ".rotated(by: slingshotAngle)",
+            ".scaledBy(x: 1.18, y: 0.86)",
+            "view.transform = baseTransform",
+            "completion(finished)",
+        ):
+            self.assertIn(expected, body)
+        self.assertEqual(
+            re.findall(
+                r"withRelativeStartTime: ([0-9.]+), relativeDuration: ([0-9.]+)",
+                body,
+            ),
+            [
+                ("0.00", "0.16"),
+                ("0.16", "0.30"),
+                ("0.46", "0.22"),
+                ("0.68", "0.17"),
+                ("0.85", "0.15"),
+            ],
+        )
+        self.assertNotIn("view.frame =", body)
+        self.assertNotIn("view.center =", body)
+        self.assertNotIn("view.alpha =", body)
         self.assertNotIn("removeAllAnimations", body)
 
     def test_displayed_icon_discovery_includes_generic_floating_docks(self) -> None:
@@ -456,8 +576,8 @@ class RandomFlipSwiftSourceContract(unittest.TestCase):
         workflow = (ROOT / ".github" / "workflows" / "build-roothide.yml").read_text(encoding="utf-8")
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
-        self.assertRegex(control, r"(?m)^Version: 0\.0\.8$")
-        self.assertRegex(makefile, r"(?m)^PACKAGE_VERSION = 0\.0\.8$")
+        self.assertRegex(control, r"(?m)^Version: 0\.1\.0$")
+        self.assertRegex(makefile, r"(?m)^PACKAGE_VERSION = 0\.1\.0$")
         self.assertRegex(control, r"(?m)^Maintainer: Tsangbaby$")
         self.assertRegex(control, r"(?m)^Author: Tsangbaby$")
         self.assertRegex(control, r"(?m)^Icon: https://tsangbaby\.github\.io/Icon/RandomIconFlip\.png$")
@@ -480,14 +600,18 @@ class RandomFlipSwiftSourceContract(unittest.TestCase):
         self.assertIn("actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683", workflow)
         self.assertIn("actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02", workflow)
         self.assertIn("com.tsangbaby.randomiconsflip", workflow)
-        self.assertIn("PACKAGE_VERSION: 0.0.8", workflow)
+        self.assertIn('PACKAGE_VERSION: "0.1.0"', workflow)
         self.assertIn('grep -Eq "^Version: ${PACKAGE_VERSION}$" control', workflow)
         self.assertIn('grep -Eq "^PACKAGE_VERSION = ${PACKAGE_VERSION}$" Makefile', workflow)
-        self.assertIn("- 当前候选版本：RootHide `0.0.8`", readme)
+        self.assertIn("Run source contracts", workflow)
+        self.assertIn("python3 -B -m unittest discover -s tests -p 'test_*.py' -v", workflow)
+        self.assertIn("- 当前候选版本：RootHide `0.1.0`", readme)
         self.assertIn("Infinity Drift / Figure Eight（∞ 漂移 / 8 字巡航）", readme)
-        self.assertIn("`0.0.7` Flutter / Leaf 已通过实机验证", readme)
-        self.assertIn("`0.0.8` Infinity Drift / Figure Eight 尚待实机验证", readme)
-        self.assertIn("PACKAGE_VERSION=0.0.8", readme)
+        self.assertIn("Rocket Launch（火箭升空）", readme)
+        self.assertIn("Slingshot（弹弓弹射）", readme)
+        self.assertIn("`0.0.8` 是当前实机验证基线", readme)
+        self.assertIn("`0.1.0` 的 Rocket Launch / Slingshot 尚待实机验证", readme)
+        self.assertIn("PACKAGE_VERSION=0.1.0", readme)
         self.assertNotIn("PACKAGE_VERSION: 0.0.7", workflow)
         self.assertNotIn("0\\.0\\.6", workflow)
         self.assertNotIn("rootless", workflow.lower())

@@ -22,7 +22,7 @@ env:
   SDK_RELEASE_COMMIT_SHA: 146e41ff2c292168388929e43c9b4de2f00e36b3
   SDK_NAME: iPhoneOS16.5.sdk
   SDK_ARCHIVE_SHA256: 5e0fd3f01266cce4ce012d4a99b38eb56578fca40d09edc81cd83dee958202fb
-  PACKAGE_VERSION: 0.0.8
+  PACKAGE_VERSION: "0.1.0"
 
 jobs:
   build-roothide:
@@ -46,6 +46,14 @@ jobs:
           test -z "$(git status --porcelain)"
           grep -Eq "^Version: ${PACKAGE_VERSION}$" control
           grep -Eq "^PACKAGE_VERSION = ${PACKAGE_VERSION}$" Makefile
+
+      - name: Run source contracts
+        shell: bash
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -euo pipefail
+          python3 -B -m unittest discover -s tests -p 'test_*.py' -v
 
       - name: Inspect Apple toolchain
         shell: bash
